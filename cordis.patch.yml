@@ -1,0 +1,4 @@
+# bundle 层：本包经 dsh plugin add 安装时自动激活的插件行（cordis patch insert）。
+- insert:
+    - id: dsh-victauri
+      name: '@zhidal/dsh-victauri'
