@@ -80,7 +80,7 @@ describe('dsh-victauri standalone 批', () => {
     const payload = { config: { product_name: 'demo' }, env: {} };
     const { client, calls } = mockClient(async () => payload);
     const tool = createRestBridgeTool(specOf('app_info'), {
-      getClient: () => client,
+      getClient: async () => client,
     });
     const result = (await tool.execute({}, {} as never)) as AnyRecord;
     expect(calls[0]?.name).toBe('app_info');
@@ -91,7 +91,7 @@ describe('dsh-victauri standalone 批', () => {
   it('eval_js 别名归一:expression 无 code 时归一为 code', async () => {
     const { client, calls } = mockClient(async () => ({ value: 2 }));
     const tool = createRestBridgeTool(specOf('eval_js'), {
-      getClient: () => client,
+      getClient: async () => client,
     });
     await tool.execute({ expression: '1+1' }, {} as never);
     expect(calls[0]?.args).toEqual({ code: '1+1' });
@@ -103,7 +103,7 @@ describe('dsh-victauri standalone 批', () => {
   it('alias 工具缺 primary(两个名都没给)返回结构化错误(execute 兜底)', async () => {
     const { client, calls } = mockClient(async () => ({}));
     const tool = createRestBridgeTool(specOf('eval_js'), {
-      getClient: () => client,
+      getClient: async () => client,
     });
     const result = (await tool.execute({}, {} as never)) as AnyRecord;
     const err = result['error'] as AnyRecord;
@@ -120,7 +120,7 @@ describe('dsh-victauri standalone 批', () => {
       { tag: 'input' },
     ]);
     const tool = createRestBridgeTool(specOf('find_elements'), {
-      getClient: () => client,
+      getClient: async () => client,
     });
     const result = (await tool.execute(
       { tag: 'button' },
@@ -139,7 +139,7 @@ describe('dsh-victauri standalone 批', () => {
       type: 'png',
     }));
     const tool = createRestBridgeTool(specOf('screenshot'), {
-      getClient: () => client,
+      getClient: async () => client,
     });
     const result = (await tool.execute({}, {} as never)) as AnyRecord;
     const path = result['path'] as string;
@@ -156,7 +156,7 @@ describe('dsh-victauri standalone 批', () => {
       throw new VictauriError('no-live-instance', 'all candidates dead');
     });
     const tool = createRestBridgeTool(specOf('get_plugin_info'), {
-      getClient: () => client,
+      getClient: async () => client,
     });
     const result = (await tool.execute({}, {} as never)) as AnyRecord;
     const err = result['error'] as AnyRecord;
@@ -170,7 +170,7 @@ describe('dsh-victauri standalone 批', () => {
       throw new Error('boom');
     });
     const tool = createRestBridgeTool(specOf('app_info'), {
-      getClient: () => client,
+      getClient: async () => client,
     });
     const result = (await tool.execute({}, {} as never)) as AnyRecord;
     expect((result['error'] as AnyRecord)['kind']).toBe('unknown');
