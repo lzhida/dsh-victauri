@@ -1,0 +1,4 @@
+# demo-app 不进 CI 门禁（Rust/HTML 源码非 TS 工具链对象）
+demo-app/
+dist/
+pnpm-lock.yaml

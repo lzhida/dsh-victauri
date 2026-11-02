@@ -7,4 +7,6 @@ coverage/
 
 # demo-app（e2e fixture，Tauri/Rust 构建产物）
 demo-app/src-tauri/target/
-demo-app/dist/
+# demo-app/dist/ 是源码（纯静态前端，frontendDist 指向），上面的 dist/ 通配会误伤——恢复它
+!demo-app/dist/
+!demo-app/dist/**
