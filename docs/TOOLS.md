@@ -1,0 +1,50 @@
+# 工具清单（口径：35 victauri 工具 + 1 CLI 桥 = 36 dsh 工具）
+
+> 本文件与 README「工具清单」小节、`src/tools/standalone/catalog.ts` 头注释、
+> `src/tools/standalone/standalone.test.ts` 契约测试共用同一口径：
+> **Victauri 全量 35 个工具**（standalone 20 + compound 15）+ **1 个 CLI 桥工具**。
+> 参数 schema 以 Victauri 官方 tools-reference 文档与本机 0.8.8 实测双重对齐，
+> 每个工具 description 内以 `[实测]` / `[文档]` 标注字段来源。
+
+## standalone 批（20 个，victauri 名 1:1 映射 dsh `victauri_<name>`）
+
+| #   | 工具                             | 用途                                           | 必填参数                         |
+| --- | -------------------------------- | ---------------------------------------------- | -------------------------------- |
+| 1   | `victauri_app_info`              | 应用信息（config/databases/env/paths/process） | —                                |
+| 2   | `victauri_app_state`             | 注册 probe 的后端状态快照                      | —                                |
+| 3   | `victauri_assert_semantic`       | 语义断言（evaluate + condition 校验）          | `expression`、`condition`        |
+| 4   | `victauri_check_ipc_integrity`   | IPC 完整性（stale/errored call）               | —                                |
+| 5   | `victauri_detect_ghost_commands` | 幽灵命令检测（无 handler 的调用）              | —                                |
+| 6   | `victauri_dom_snapshot`          | DOM 快照（compact/json + stale refs）          | —                                |
+| 7   | `victauri_eval_js`               | webview 内求值 JS                              | `code`（别名 `expression` 兼容） |
+| 8   | `victauri_find_elements`         | 按 text/role/selector 搜元素                   | —                                |
+| 9   | `victauri_get_diagnostics`       | 环境诊断（service worker/iframe/CSP）          | —                                |
+| 10  | `victauri_get_memory_stats`      | OS 级进程内存统计                              | —                                |
+| 11  | `victauri_get_plugin_info`       | Victauri 插件配置/端口/命令清单                | —                                |
+| 12  | `victauri_get_registry`          | 注册命令目录（可按名过滤）                     | —                                |
+| 13  | `victauri_invoke_command`        | 经 IPC 调用 Tauri 命令                         | `command`                        |
+| 14  | `victauri_list_app_dir`          | 列应用数据/配置/日志目录                       | —                                |
+| 15  | `victauri_query_db`              | 只读 SQL 查询 SQLite                           | `query`（别名 `sql` 兼容）       |
+| 16  | `victauri_read_app_file`         | 读应用目录文件（text/base64）                  | `path`                           |
+| 17  | `victauri_resolve_command`       | 自然语言匹配命令                               | `query`                          |
+| 18  | `victauri_screenshot`            | 窗口截图（base64 → dsh 侧落盘返回路径）        | —                                |
+| 19  | `victauri_verify_state`          | 前后端状态比对                                 | `frontend_expr`                  |
+| 20  | `victauri_wait_for`              | 轮询等待条件（text/selector/url/ipc_idle…）    | `condition`                      |
+
+## compound 批（15 个，`action` 参数选择子动作）
+
+`victauri_animation` `victauri_css` `victauri_explain` `victauri_fault` `victauri_input`
+`victauri_inspect` `victauri_interact` `victauri_introspect` `victauri_logs` `victauri_navigate`
+`victauri_recording` `victauri_route` `victauri_storage` `victauri_trace` `victauri_window`
+
+## CLI 桥（1 个）
+
+| 工具           | 子命令（action 枚举）                                                        |
+| -------------- | ---------------------------------------------------------------------------- |
+| `victauri_cli` | `init` `check` `test` `record` `doctor` `watch` `invoke` `bridge` `coverage` |
+
+## 口径一致性
+
+四处同源：README「工具清单」= 本文件 = `catalog.ts` 头注释（standalone 20，
+全量 35 关系说明）= `standalone.test.ts`（从 `STANDALONE_TOOL_COUNT`、
+`CLI_ACTIONS.length` 常量推导断言，不硬编码字面量）。
