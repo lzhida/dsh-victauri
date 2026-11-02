@@ -25,6 +25,11 @@ export type VictauriErrorKind =
   /** victauri CLI spawn 失败(可执行文件不存在等) */
   | 'cli-error';
 
+/** unknown 收窄:是否为 victauri 结构化错误。 */
+export function isVictauriError(err: unknown): err is VictauriError {
+  return err instanceof VictauriError;
+}
+
 /** HTTP 非 2xx 错误:携带状态码与响应体摘要。 */
 export class VictauriHttpError extends VictauriError {
   readonly status: number;
