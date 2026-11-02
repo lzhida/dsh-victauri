@@ -35,8 +35,14 @@ const specOf = (name: string) =>
 
 describe('dsh-victauri standalone 批', () => {
   it('20 个工具注册齐全且 dsh 名带 victauri_ 前缀(口径=README=docs=契约测试)', () => {
+    // 全量口径:Victauri 35(standalone 20 + compound 15)+ CLI 桥 1 个工具 = 36 dsh 工具
+    // (CLI_ACTIONS.length=9 是子命令数,不是工具数)
+    const COMPOUND_COUNT = 15;
     expect(STANDALONE_TOOL_COUNT).toBe(20);
-    expect(REST_TOOL_SPECS).toHaveLength(20);
+    expect(STANDALONE_TOOL_COUNT + COMPOUND_COUNT).toBe(35);
+    expect(STANDALONE_TOOL_COUNT + COMPOUND_COUNT + 1).toBe(36);
+    expect(CLI_ACTIONS.length).toBe(9);
+    expect(REST_TOOL_SPECS).toHaveLength(STANDALONE_TOOL_COUNT);
     for (const spec of REST_TOOL_SPECS) {
       const tool = createRestBridgeTool(spec, { getClient: null as never });
       expect(tool.name).toBe(`victauri_${spec.name}`);
