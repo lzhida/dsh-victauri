@@ -21,7 +21,9 @@ export type VictauriErrorKind =
   /** 请求超时 */
   | 'timeout'
   /** 工具执行被 victauri 拒绝(工具级错误响应) */
-  | 'tool-error';
+  | 'tool-error'
+  /** victauri CLI spawn 失败(可执行文件不存在等) */
+  | 'cli-error';
 
 /** HTTP 非 2xx 错误:携带状态码与响应体摘要。 */
 export class VictauriHttpError extends VictauriError {
