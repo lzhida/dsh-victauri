@@ -26,21 +26,22 @@ export interface RestToolSpec {
   readonly parameters: ParameterSchemaSpec;
 }
 
-const STR = (description: string, required = false) => ({
+/** 标量参数辅助（standalone/compound catalog 共用）。 */
+export const STR = (description: string, required = false) => ({
   type: 'string' as const,
   description,
   ...(required ? { required: true as const } : {}),
 });
-const INT = (description: string, required = false) => ({
+export const INT = (description: string, required = false) => ({
   type: 'integer' as const,
   description,
   ...(required ? { required: true as const } : {}),
 });
-const BOOL = (description: string) => ({
+export const BOOL = (description: string) => ({
   type: 'boolean' as const,
   description,
 });
-const WEBVIEW = STR('目标 webview 标签;缺省取第一个可用 webview [文档]');
+export const WEBVIEW = STR('目标 webview 标签;缺省取第一个可用 webview [文档]');
 
 /** 20 个 standalone 工具规格（顺序 = 文档 tools-reference 顺序）。 */
 export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
