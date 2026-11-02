@@ -17,9 +17,9 @@ import type { JsonValue } from '../../json.ts';
 import type { RestToolSpec } from './catalog.ts';
 import { renderJson, saveScreenshot } from './render.ts';
 
-/** 工具运行期依赖：惰性取连接（装配层缓存复用）。 */
+/** 工具运行期依赖：惰性取连接（装配层缓存复用；连接异步建立）。 */
 export interface BridgeDeps {
-  getClient: () => VictauriClient;
+  getClient: () => Promise<VictauriClient>;
 }
 
 /** 无 app 运行/调用失败时的自检指引。 */
@@ -109,7 +109,8 @@ export function createRestBridgeTool(
             );
           }
         }
-        const result = await deps.getClient().callTool(spec.name, callArgs);
+        const client = await deps.getClient();
+        const result = await client.callTool(spec.name, callArgs);
         // screenshot:base64 落盘返回路径
         if (spec.name === 'screenshot' && isScreenshotValue(result)) {
           return saveScreenshot(result.data, result.mimeType);

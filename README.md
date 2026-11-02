@@ -1,29 +1,85 @@
 # dsh-victauri
 
-[dsh](https://github.com/lzhida/dsh-plugins-workspace) 插件：Victauri 桥接。
+[![CI](https://github.com/lzhida/dsh-victauri/actions/workflows/ci.yml/badge.svg)](https://github.com/lzhida/dsh-victauri/actions/workflows/ci.yml)
+
+[dsh](https://github.com/lzhida/dsh-plugins-workspace)（DeepSeek Harness）插件：Victauri 桥接。
 
 把 [Victauri](https://github.com/4da-systems/Victauri)（Tauri 应用内嵌的 MCP 服务器）暴露的 **35 个调试/测试工具**全量桥接为 dsh 原生工具，并桥接 `victauri` CLI 能力（check / test / doctor / coverage 等），让 dsh 会话具备 **Tauri 框架开发测试环境**。
 
 ## 工作原理
 
-- **主通道 · REST 直连**：读取 Victauri discovery 目录（`%TEMP%\victauri\<pid>\`）拿到 `token` / `port`，直接 `POST /api/tools/{tool_name}` 执行工具，零中间层。
+- **主通道 · REST 直连**：读取 Victauri discovery 目录（Windows `%TEMP%\victauri\<pid>\{metadata.json, port, token}`；类 Unix 按官方三级回退）拿到 `token` / `port`，直接 `POST /api/tools/{tool_name}` 执行工具，零中间层。
 - **辅通道 · CLI 桥**：spawn 本机 `victauri` CLI（`check` / `doctor` / `test` / `coverage` 等子命令），补足 HTTP 面之外的工程能力。
+- **连接惰性建立**：插件装载不做 discovery；首次工具调用才自动探活（`started_at` 最新优先），Tauri app 未启动不影响插件加载。
+
+## 安装
+
+### 方式一：link 安装（开发/本地，推荐）
+
+```sh
+# 在 dsh 工作区执行（--profile 须置于 plugin 之后；link: 后必须是绝对路径）
+pnpm dsh plugin --profile test add link:E:\workspace\plugins\dsh-victauri
+```
+
+### 方式二：git 实体安装
+
+```sh
+pnpm dsh plugin --profile test add github:lzhida/dsh-victauri
+```
+
+本插件为**构建式发行**（`main` 指向 esbuild 产出的 `dist/index.js`，`prepare`/`prepack` 自动构建），git/npm 安装可直接使用。pnpm 对 git 依赖不装 devDependencies，构建依赖（esbuild）与运行时依赖均在 `dependencies`；若宿主 pnpm 拦截构建脚本，需在消费侧 `pnpm-workspace.yaml` 的 `allowBuilds` 放行 `esbuild`。
+
+## 配置
+
+| 字段               | 类型     | 默认    | 说明                                                                                                                            |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `appIdentifier`    | string   | `''`    | 按 Tauri app bundle id 过滤实例（discovery `metadata.identifier`，对应 victauri bridge 的 `--app` 语义）；留空 = 自动选最新实例 |
+| `portOverride`     | number   | 空      | 固定服务端口（须出现在 discovery 中）；留空 = 自动发现                                                                          |
+| `cliPath`          | string   | `''`    | `victauri` CLI 可执行文件路径；留空 = 平台默认（win32 为 `victauri.exe`）                                                       |
+| `requestTimeoutMs` | number   | `30000` | REST 请求超时毫秒                                                                                                               |
+| `disabledTools`    | string[] | `[]`    | 不注册的工具全名列表（`victauri_` 前缀全名）                                                                                    |
 
 ## 工具清单
 
 Victauri 全量 **35 个工具** + 1 个 CLI 桥工具 = **36 个 dsh 工具**：
 
 - **standalone 批（20 个）**——单动作用途，参数 1:1 透传：
-  `app_info` `app_state` `assert_semantic` `check_ipc_integrity` `detect_ghost_commands` `dom_snapshot` `eval_js` `find_elements` `get_diagnostics` `get_memory_stats` `get_plugin_info` `get_registry` `invoke_command` `list_app_dir` `query_db` `read_app_file` `resolve_command` `screenshot` `verify_state` `wait_for`
+  `victauri_app_info` `victauri_app_state` `victauri_assert_semantic` `victauri_check_ipc_integrity` `victauri_detect_ghost_commands` `victauri_dom_snapshot` `victauri_eval_js` `victauri_find_elements` `victauri_get_diagnostics` `victauri_get_memory_stats` `victauri_get_plugin_info` `victauri_get_registry` `victauri_invoke_command` `victauri_list_app_dir` `victauri_query_db` `victauri_read_app_file` `victauri_resolve_command` `victauri_screenshot` `victauri_verify_state` `victauri_wait_for`
 - **compound 批（15 个）**——复合工具，`action` 参数选择子动作：
-  `animation` `css` `explain` `fault` `input` `inspect` `interact` `introspect` `logs` `navigate` `recording` `route` `storage` `trace` `window`
+  `victauri_animation` `victauri_css` `victauri_explain` `victauri_fault` `victauri_input` `victauri_inspect` `victauri_interact` `victauri_introspect` `victauri_logs` `victauri_navigate` `victauri_recording` `victauri_route` `victauri_storage` `victauri_trace` `victauri_window`
 - **CLI 桥（1 个）**——`victauri_cli`：透传 `victauri` CLI 子命令（`init` / `check` / `test` / `record` / `doctor` / `watch` / `invoke` / `bridge` / `coverage`）。
 
-工具详情与参数 schema 见 [docs/TOOLS.md](docs/TOOLS.md)。
+工具详情、必填参数与 compound `action` 枚举表见 [docs/TOOLS.md](docs/TOOLS.md)。
 
-## 状态
+## 行为约定
 
-🚧 0.1.0：脚手架 + 连接层 + CLI 桥 + standalone 批（20）已落地；compound 批（15）、配置面与 demo-app 进行中。
+- **错误不抛栈**：连接失败 / HTTP 错误 / 工具执行失败统一返回结构化 `{error: {kind, message, hint}}`，`hint` 含自检指引（启动 app → `victauri check` → 跑 demo-app 验证链路）。
+- **screenshot 落盘**：`victauri_screenshot` 的 base64 结果落盘 `%TEMP%\dsh-victauri\screenshot-<ts>.png`，返回 `{path, mime_type, bytes}`，不占模型上下文。
+- **别名兼容**：`victauri_eval_js`（`code`/`expression`）与 `victauri_query_db`（`query`/`sql`）双命名兼容，以实测名优先；别名键不透传服务端。
+- **数组包装**：顶层数组结果包装为 `{items: [...]}`（dsh 工具契约要求顶层 object）。
+- **版本兼容**：参数 schema 以 victauri 0.8.8（本机桥实测）与 0.10.x（官方文档）双源对齐，字段级差异在工具 description 内以 `[实测]` / `[文档]` / `[桥]` 标注。
+
+## 故障排查
+
+| 现象                        | 处置                                                                                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 工具返回 `no-live-instance` | Tauri app 未启动或未接入 victauri-plugin：以 **debug 构建**启动 app（release 构建的 victauri 桥是 no-op）并确认 `Builder.plugin(victauri_plugin::init())` 已接入 |
+| 工具返回 `no-instance`      | discovery 目录无记录：确认 app 以 victauri-plugin 启动过；多实例/多 app 时配置 `appIdentifier` 或 `portOverride` 收敛目标                                        |
+| `401` / `http-error`        | token 失效（app 重启后 discovery 更新）：重启 dsh 插件或重试（连接失败会重置缓存，下次调用自动重新探活）                                                         |
+| `cli-error`（CLI 桥）       | `victauri` CLI 不在 PATH：配置 `cliPath` 指向可执行文件                                                                                                          |
+| 注册的工具偏多              | 配置 `disabledTools` 列出不需要的工具全名                                                                                                                        |
+
+## 开发
+
+```sh
+pnpm install     # 安装依赖（prepare 自动构建 dist）
+pnpm test        # vitest（含契约测试：36 工具名唯一/数量口径/action 枚举）
+pnpm typecheck   # tsc --noEmit
+pnpm lint        # eslint
+pnpm build       # esbuild 产出 dist/index.js
+```
+
+内置 e2e demo Tauri app 见 [demo-app/](demo-app/)（开发测试链路用，不进 CI）。
 
 ## License
 
