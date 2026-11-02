@@ -23,6 +23,11 @@
   "engines": {
     "node": ">=22"
   },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js --sourcemap",
     "prepare": "npm run build",
