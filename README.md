@@ -47,7 +47,7 @@ Victauri 全量 **35 个工具** + 1 个 CLI 桥工具 + 1 个 CLI 探测工具 
   `victauri_app_info` `victauri_app_state` `victauri_assert_semantic` `victauri_check_ipc_integrity` `victauri_detect_ghost_commands` `victauri_dom_snapshot` `victauri_eval_js` `victauri_find_elements` `victauri_get_diagnostics` `victauri_get_memory_stats` `victauri_get_plugin_info` `victauri_get_registry` `victauri_invoke_command` `victauri_list_app_dir` `victauri_query_db` `victauri_read_app_file` `victauri_resolve_command` `victauri_screenshot` `victauri_verify_state` `victauri_wait_for`
 - **compound 批（15 个）**——复合工具，`action` 参数选择子动作：
   `victauri_animation` `victauri_css` `victauri_explain` `victauri_fault` `victauri_input` `victauri_inspect` `victauri_interact` `victauri_introspect` `victauri_logs` `victauri_navigate` `victauri_recording` `victauri_route` `victauri_storage` `victauri_trace` `victauri_window`
-- **CLI 桥（1 个）**——`victauri_cli`：透传 `victauri` CLI 子命令（`init` / `check` / `test` / `record` / `doctor` / `watch` / `invoke` / `bridge` / `coverage`）。
+- **CLI 桥（1 个）**——`victauri_cli`：透传 `victauri` CLI 子命令（`init` / `check` / `test` / `record` / `doctor` / `watch` / `invoke` / `bridge` / `coverage`）；`doctor` 的 PASS/FAIL/WARN 明细额外解析进结构化输出（原始 stdout 始终保留，解析失败回退原文），长驻子命令（`watch` / `bridge`）须配合 `timeout_ms`，超时返回 `timed_out=true` + 部分输出，子命令提示按探测到的 CLI 版本门控（0.8.8 不提示 `doctor --json`）。
 - **CLI 探测（1 个）**——`victauri_cli_status`：探测本机 `victauri` CLI 可用性（版本号 + 实际命中路径 + 子命令口径）；CLI 未安装时返回 `status=not_found` 并附安装指引（scoop / mise / cargo install victauri），结果缓存 60s（`refresh=true` 强制重探）。命中路径取 **PATH 顺序下第一个实际命中**的可执行文件（可能与 `where.exe victauri` 首条不同，均为有效安装位置）。
 
 工具详情、必填参数与 compound `action` 枚举表见 [docs/TOOLS.md](docs/TOOLS.md)。
@@ -62,13 +62,13 @@ Victauri 全量 **35 个工具** + 1 个 CLI 桥工具 + 1 个 CLI 探测工具 
 
 ## 故障排查
 
-| 现象                        | 处置                                                                                                                                                             |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 工具返回 `no-live-instance` | Tauri app 未启动或未接入 victauri-plugin：以 **debug 构建**启动 app（release 构建的 victauri 桥是 no-op）并确认 `Builder.plugin(victauri_plugin::init())` 已接入 |
-| 工具返回 `no-instance`      | discovery 目录无记录：确认 app 以 victauri-plugin 启动过；多实例/多 app 时配置 `appIdentifier` 或 `portOverride` 收敛目标                                        |
-| `401` / `http-error`        | token 失效（app 重启后 discovery 更新）：重启 dsh 插件或重试（连接失败会重置缓存，下次调用自动重新探活）                                                         |
+| 现象                        | 处置                                                                                                                                                                                   |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 工具返回 `no-live-instance` | Tauri app 未启动或未接入 victauri-plugin：以 **debug 构建**启动 app（release 构建的 victauri 桥是 no-op）并确认 `Builder.plugin(victauri_plugin::init())` 已接入                       |
+| 工具返回 `no-instance`      | discovery 目录无记录：确认 app 以 victauri-plugin 启动过；多实例/多 app 时配置 `appIdentifier` 或 `portOverride` 收敛目标                                                              |
+| `401` / `http-error`        | token 失效（app 重启后 discovery 更新）：重启 dsh 插件或重试（连接失败会重置缓存，下次调用自动重新探活）                                                                               |
 | `cli-error`（CLI 桥）       | `victauri` CLI 不在 PATH：先跑 `victauri_cli_status` 看探测结论；再配置 `cliPath` 指向可执行文件或按提示 `scoop install victauri` / `mise install victauri` / `cargo install victauri` |
-| 注册的工具偏多              | 配置 `disabledTools` 列出不需要的工具全名                                                                                                                        |
+| 注册的工具偏多              | 配置 `disabledTools` 列出不需要的工具全名                                                                                                                                              |
 
 ## 开发
 

@@ -6,33 +6,62 @@ import {
   isCliAction,
   runVictauriCli,
   CLI_DEFAULT_TIMEOUT_MS,
+  type CliRunOptions,
+  type CliRunResult,
 } from '../cli.ts';
+import { buildActionHint, buildCliToolDescription } from '../cli-hints.ts';
+import { parseDoctorReportFromStreams } from '../cli-doctor.ts';
+import { getCliStatus } from './cli-status.ts';
 
 /** 工具层执行预算:victauri test/record 可能耗时,给满 5 分钟。 */
 const TOOL_TIMEOUT_MS = 300_000;
 
-/** victauri_cli 各子命令的一句话语义(0.8.8 实测 + 0.10 文档)。 */
-const ACTION_HINTS: Record<string, string> = {
-  init: '为 Tauri 项目生成 victauri 接入脚手架(Cargo 依赖/capability/init 调用)',
-  check: '校验项目接入配置完整性(Cargo.toml/capability/register_commands)',
-  test: '在真实 app 上跑 victauri 测试集',
-  record: '录制会话轨迹供回放',
-  doctor: '诊断 CLI/服务/发现链路健康状态',
-  watch: '监视 app 服务与 discovery 目录变化(常驻)',
-  invoke: '不依赖 dsh 直接触发一次工具调用(参数按子命令约定)',
-  bridge: '启动 stdio MCP 代理(连接时自动发现端口+读 token,--app 过滤)',
-  coverage: '报告 #[inspectable] 命令的工具覆盖情况',
-};
+/** 输出被截断时由 runVictauriCli 追加的标记。 */
+const TRUNCATION_MARKER = '[truncated]';
+
+/** victauri_cli 工具工厂选项（cliPath / version / 依赖注入,均不暴露给模型）。 */
+export interface VictauriCliToolOptions {
+  /** victauri 可执行文件路径;默认按平台解析。 */
+  cliPath?: string;
+  /** 已知 CLI 版本;缺省时按需探测（60s 缓存）。 */
+  version?: string | null;
+  /** 版本探测实现（测试注入;默认走 victauri_cli_status 的探测）。 */
+  probeVersion?: (cliPath?: string) => Promise<string | null>;
+  /** CLI 执行实现（测试注入;默认走 runVictauriCli）。 */
+  run?: (options: CliRunOptions) => Promise<CliRunResult>;
+}
+
+/**
+ * 解析本次执行使用的 CLI 版本（版本感知的来源）。
+ *
+ * 优先级:显式注入 > 注入的探测实现 > victauri_cli_status 的探测（60s 缓存）。
+ */
+async function resolveCliVersion(
+  options: VictauriCliToolOptions,
+): Promise<string | null> {
+  if (options.version !== undefined) return options.version;
+  if (options.probeVersion !== undefined) {
+    return await options.probeVersion(options.cliPath);
+  }
+  const status = await getCliStatus(options.cliPath);
+  return status.version;
+}
+
+/** 是否只捕获到部分输出（超时强杀或输出被截断）。 */
+function isPartialOutput(result: CliRunResult): boolean {
+  if (result.timedOut) return true;
+  return (
+    result.stdout.includes(TRUNCATION_MARKER) ||
+    result.stderr.includes(TRUNCATION_MARKER)
+  );
+}
 
 /** victauri_cli 工具工厂:cliPath 仅注入(测试/自定义安装路径),不暴露给模型。 */
-export function createVictauriCliTool(options: { cliPath?: string } = {}) {
+export function createVictauriCliTool(options: VictauriCliToolOptions = {}) {
+  const run = options.run ?? runVictauriCli;
   return defineTool({
     name: 'victauri_cli',
-    description: [
-      '执行 victauri CLI 子命令(辅通道;victauri 服务经 victauri_* 工具走 REST 主通道)。',
-      `action 选择子命令:${CLI_ACTIONS.map((a) => `${a}=${ACTION_HINTS[a] ?? ''}`).join('; ')}。`,
-      'args 透传给子命令(不含子命令名本身);长驻子命令(watch/bridge)建议配合超时使用。',
-    ].join(' '),
+    description: buildCliToolDescription(options.version ?? null),
     parameters: {
       action: {
         type: 'string',
@@ -59,8 +88,14 @@ export function createVictauriCliTool(options: { cliPath?: string } = {}) {
         type: 'object',
         additionalProperties: false,
         properties: {
+          action: {
+            type: 'string',
+            required: true,
+            description: '实际执行的子命令',
+          },
           exit_code: {
             oneOf: [{ type: 'integer' }, { type: 'null' }],
+            required: true,
             description: '退出码;null=超时强杀或被信号终止',
           },
           stdout: {
@@ -78,11 +113,138 @@ export function createVictauriCliTool(options: { cliPath?: string } = {}) {
             required: true,
             description: '是否因超时被终止',
           },
+          partial: {
+            type: 'boolean',
+            required: true,
+            description: '是否只捕获到部分输出(超时强杀或输出被截断)',
+          },
+          cli_version: {
+            oneOf: [{ type: 'string' }, { type: 'null' }],
+            required: true,
+            description:
+              '探测到的 CLI 版本;null=未探测到(此时不给版本门控提示)',
+          },
+          hints: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              summary: {
+                type: 'string',
+                required: true,
+                description: '该子命令的一句话语义(含长驻/交互行为标记)',
+              },
+              notes: {
+                type: 'array',
+                items: { type: 'string' },
+                required: true,
+                description: '版本门控提示(按探测到的 CLI 版本过滤)',
+              },
+              long_running: {
+                type: 'boolean',
+                required: true,
+                description: '是否长驻子命令(必须配合 timeout_ms)',
+              },
+              interactive: {
+                type: 'boolean',
+                required: true,
+                description: '是否支持交互式 stdin',
+              },
+            },
+            required: true,
+            description: '该子命令的版本感知提示',
+          },
+          doctor: {
+            oneOf: [
+              {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  summary: {
+                    oneOf: [{ type: 'string' }, { type: 'null' }],
+                    required: true,
+                    description: 'Summary 行原文;未识别到为 null',
+                  },
+                  passed: {
+                    oneOf: [{ type: 'integer' }, { type: 'null' }],
+                    required: true,
+                    description: '通过数;未识别到为 null',
+                  },
+                  total: {
+                    oneOf: [{ type: 'integer' }, { type: 'null' }],
+                    required: true,
+                    description: '检查项总数;未识别到为 null',
+                  },
+                  failed: {
+                    oneOf: [{ type: 'integer' }, { type: 'null' }],
+                    required: true,
+                    description: '失败数;未识别到为 null',
+                  },
+                  warnings: {
+                    oneOf: [{ type: 'integer' }, { type: 'null' }],
+                    required: true,
+                    description: '警告数;未识别到为 null',
+                  },
+                  checks: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      additionalProperties: false,
+                      properties: {
+                        status: {
+                          type: 'string',
+                          enum: ['PASS', 'FAIL', 'WARN'],
+                          required: true,
+                          description: '检查项状态',
+                        },
+                        message: {
+                          type: 'string',
+                          required: true,
+                          description: '检查项正文',
+                        },
+                        detail: {
+                          oneOf: [{ type: 'string' }, { type: 'null' }],
+                          required: true,
+                          description: '缩进续行(补充说明);无则 null',
+                        },
+                      },
+                    },
+                    required: true,
+                    description: '检查项明细(按输出顺序)',
+                  },
+                },
+              },
+              { type: 'null' },
+            ],
+            required: true,
+            description:
+              'doctor 子命令的结构化报告(依次解析 stdout 与 stderr;0.8.8 实测报告写在 stderr);非 doctor 子命令、或两路都识别不到报告时为 null(此时 stdout/stderr 原样保留)',
+          },
         },
       },
       render: (_args, value) => {
-        const head = `victauri_cli exit=${String(value.exit_code)}${value.timed_out ? ' (timed out)' : ''}`;
+        const head = [
+          `victauri_cli ${value.action} exit=${String(value.exit_code)}`,
+          value.timed_out ? '(timed out)' : '',
+          value.partial ? '(partial output)' : '',
+          value.cli_version === null
+            ? '(cli version unknown)'
+            : `(cli ${value.cli_version})`,
+        ]
+          .filter((part) => part !== '')
+          .join(' ');
         const blocks: ContentBlock[] = [{ type: 'text', text: head }];
+        const doctor = value.doctor;
+        if (doctor !== null) {
+          const lines = doctor.checks.map(
+            (check) =>
+              `  [${check.status}] ${check.message}` +
+              (check.detail === null ? '' : ` — ${check.detail}`),
+          );
+          if (doctor.summary !== null) lines.push(`  ${doctor.summary}`);
+          if (lines.length > 0) {
+            blocks.push({ type: 'text', text: lines.join('\n') });
+          }
+        }
         const preview = (value.stderr || value.stdout).slice(0, 2000);
         if (preview) {
           blocks.push({ type: 'text', text: preview });
@@ -97,17 +259,32 @@ export function createVictauriCliTool(options: { cliPath?: string } = {}) {
         // enum 已在参数校验拦截;此处兜底保证类型收窄
         throw new Error(`unknown victauri subcommand: ${action}`);
       }
-      const result = await runVictauriCli({
+      const version = await resolveCliVersion(options);
+      const result = await run({
         args: [action, ...(extraArgs ?? [])],
         cliPath: options.cliPath,
         timeoutMs: timeout_ms ?? CLI_DEFAULT_TIMEOUT_MS,
         ...(cwd !== undefined ? { cwd } : {}),
       });
+      const hint = buildActionHint(action, version);
       return {
+        action,
         exit_code: result.exitCode,
         stdout: result.stdout,
         stderr: result.stderr,
         timed_out: result.timedOut,
+        partial: isPartialOutput(result),
+        cli_version: version,
+        hints: {
+          summary: hint.summary,
+          notes: hint.notes,
+          long_running: hint.longRunning,
+          interactive: hint.interactive,
+        },
+        doctor:
+          action === 'doctor'
+            ? parseDoctorReportFromStreams(result.stdout, result.stderr)
+            : null,
       };
     },
   });

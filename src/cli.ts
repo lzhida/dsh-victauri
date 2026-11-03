@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 
+import { CLI_ACTIONS, type CliAction } from './cli-hints.ts';
 import { VictauriError } from './errors.ts';
 
 /** CLI 默认超时:test/record/watch 类子命令可能较慢,取 2 分钟量级。 */
@@ -114,22 +115,16 @@ export function runVictauriCli(options: CliRunOptions): Promise<CliRunResult> {
 }
 
 /**
- * victauri CLI 已知子命令(0.8.8 实测 + 0.10 文档):
+ * victauri CLI 已知子命令（0.8.8 实测 + 0.10 文档）：
  * init/check/test/record/doctor/watch/invoke/bridge/coverage。
+ *
+ * 口径唯一来源已上移到 `src/cli-hints.ts` 的 `CLI_ACTION_SPECS`
+ * （子命令 + 语义 + 版本门控提示同表维护）；此处仅做转发，
+ * 保证既有 `from '../cli.ts'` 的引用面不变。
  */
-export const CLI_ACTIONS = [
-  'init',
-  'check',
-  'test',
-  'record',
-  'doctor',
-  'watch',
-  'invoke',
-  'bridge',
-  'coverage',
-] as const;
+export { CLI_ACTIONS };
 
-export type CliAction = (typeof CLI_ACTIONS)[number];
+export type { CliAction };
 
 /** action 合法性守卫(工具入参校验,enum 之外给出可读错误)。 */
 export function isCliAction(value: string): value is CliAction {

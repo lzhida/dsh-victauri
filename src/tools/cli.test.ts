@@ -1,17 +1,62 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
+import {
+  assertSupportedJsonSchema,
+  validateJsonSchemaValue,
+} from '@deepseek-ai/dsh-tools';
 
 import { createVictauriCliTool, victauriCliTool } from './cli.ts';
 
 /** ToolDefinition.execute 返回 unknown(运行时接口),断言回具体形状。 */
 interface CliToolValue {
+  action: string;
   exit_code: number | null;
   stdout: string;
   stderr: string;
   timed_out: boolean;
+  partial: boolean;
+  cli_version: string | null;
+  hints: {
+    summary: string;
+    notes: string[];
+    long_running: boolean;
+    interactive: boolean;
+  };
+  doctor: {
+    summary: string | null;
+    passed: number | null;
+    total: number | null;
+    failed: number | null;
+    warnings: number | null;
+    checks: { status: string; message: string; detail: string | null }[];
+  } | null;
 }
 
 /** 工具工厂注入 node 本体当 cliPath:用 -e 脚本模拟 victauri 子命令行为。 */
 const tool = createVictauriCliTool({ cliPath: process.execPath });
+
+/** 0.8.8 实测 doctor 输出(仓根执行,全 FAIL)。 */
+const DOCTOR_SAMPLE_088 = `Victauri Doctor — checking your setup...
+
+  [FAIL] No Cargo.toml found in current directory
+         Run this command from your Tauri project root.
+
+Summary: 0/1 passed, 1 failed, 0 warnings
+Setup needs attention. Fix the [FAIL] items above to get started.
+`;
+
+/** 造一个恒定返回指定结果的执行器(替身,避免真实 spawn)。 */
+function fakeRun(result: {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+}) {
+  return async () => result;
+}
 
 describe('dsh-victauri victauri_cli tool', () => {
   it('execute 拼装 [action, ...args] 并返回结构化四元组', async () => {
@@ -24,10 +69,13 @@ describe('dsh-victauri victauri_cli tool', () => {
     )) as CliToolValue;
     // node -e 脚本不认识 doctor 子命令,exit 非零但结构化字段齐全
     expect(result).toMatchObject({
+      action: 'doctor',
       exit_code: expect.anything(),
       stdout: expect.any(String),
       stderr: expect.any(String),
       timed_out: false,
+      partial: expect.any(Boolean),
+      cli_version: expect.anything(),
     });
   });
 
@@ -74,5 +122,240 @@ describe('dsh-victauri victauri_cli tool', () => {
         {} as never,
       ),
     ).rejects.toThrow(/must be one of/);
+  });
+
+  it('doctor 输出结构化明细(PASS/FAIL/WARN)+ 保留原始 stdout', async () => {
+    const doctorTool = createVictauriCliTool({
+      version: '0.8.8',
+      run: fakeRun({
+        exitCode: 0,
+        stdout: DOCTOR_SAMPLE_088,
+        stderr: '',
+        timedOut: false,
+      }),
+    });
+    const result = (await doctorTool.execute(
+      { action: 'doctor', args: [] },
+      {} as never,
+    )) as CliToolValue;
+    expect(result.doctor).not.toBeNull();
+    expect(result.doctor?.checks).toEqual([
+      {
+        status: 'FAIL',
+        message: 'No Cargo.toml found in current directory',
+        detail: 'Run this command from your Tauri project root.',
+      },
+    ]);
+    expect(result.doctor?.passed).toBe(0);
+    expect(result.doctor?.total).toBe(1);
+    expect(result.doctor?.failed).toBe(1);
+    expect(result.doctor?.warnings).toBe(0);
+    // 原始 stdout 保留
+    expect(result.stdout).toContain('No Cargo.toml found in current directory');
+    expect(result.stdout).toContain('Summary: 0/1 passed');
+  });
+
+  it('0.8.8 实测:doctor 报告落在 stderr(stdout 为空)时仍解析出结构化明细', async () => {
+    const stderrTool = createVictauriCliTool({
+      version: '0.8.8',
+      run: fakeRun({
+        exitCode: 0,
+        stdout: '',
+        stderr: DOCTOR_SAMPLE_088,
+        timedOut: false,
+      }),
+    });
+    const result = (await stderrTool.execute(
+      { action: 'doctor', args: [] },
+      {} as never,
+    )) as CliToolValue;
+    expect(result.doctor).not.toBeNull();
+    expect(result.doctor?.checks[0]?.status).toBe('FAIL');
+    expect(result.doctor?.failed).toBe(1);
+    // 原文仍在 stderr 里原样保留
+    expect(result.stderr).toContain('Summary: 0/1 passed');
+  });
+
+  it('doctor 文本无法解析时回退原文(doctor=null,stdout 原样)', async () => {
+    const badTool = createVictauriCliTool({
+      version: '0.8.8',
+      run: fakeRun({
+        exitCode: 1,
+        stdout:
+          "error: unexpected argument '--json' found\n\nUsage: victauri doctor\n",
+        stderr: '',
+        timedOut: false,
+      }),
+    });
+    const result = (await badTool.execute(
+      { action: 'doctor', args: ['--json'] },
+      {} as never,
+    )) as CliToolValue;
+    expect(result.doctor).toBeNull();
+    expect(result.stdout).toContain("unexpected argument '--json' found");
+    expect(result.exit_code).toBe(1);
+  });
+
+  it('0.8.8 实测:doctor --json 报错在 stderr(stdout 空)→ doctor=null 回退原文', async () => {
+    const realTool = createVictauriCliTool({
+      version: '0.8.8',
+      run: fakeRun({
+        exitCode: 2,
+        stdout: '',
+        stderr:
+          "error: unexpected argument '--json' found\n\nUsage: victauri.exe doctor\n\nFor more information, try '--help'.\n",
+        timedOut: false,
+      }),
+    });
+    const result = (await realTool.execute(
+      { action: 'doctor', args: ['--json'] },
+      {} as never,
+    )) as CliToolValue;
+    expect(result.doctor).toBeNull();
+    expect(result.exit_code).toBe(2);
+    expect(result.stderr).toContain("unexpected argument '--json' found");
+  });
+
+  it('非 doctor 子命令 doctor 字段恒为 null', async () => {
+    const initTool = createVictauriCliTool({
+      version: '0.8.8',
+      run: fakeRun({
+        exitCode: 0,
+        stdout: DOCTOR_SAMPLE_088,
+        stderr: '',
+        timedOut: false,
+      }),
+    });
+    const result = (await initTool.execute(
+      { action: 'init', args: [] },
+      {} as never,
+    )) as CliToolValue;
+    expect(result.doctor).toBeNull();
+  });
+
+  it('watch 超时:timed_out=true + partial=true + 保留已捕获的部分输出', async () => {
+    const watchTool = createVictauriCliTool({
+      version: '0.8.8',
+      run: fakeRun({
+        exitCode: null,
+        stdout: 'watching tests...\n',
+        stderr: '',
+        timedOut: true,
+      }),
+    });
+    const result = (await watchTool.execute(
+      { action: 'watch', args: [], timeout_ms: 1000 },
+      {} as never,
+    )) as CliToolValue;
+    expect(result.timed_out).toBe(true);
+    expect(result.partial).toBe(true);
+    expect(result.exit_code).toBeNull();
+    expect(result.stdout).toContain('watching tests...');
+    expect(result.hints.long_running).toBe(true);
+    expect(result.hints.interactive).toBe(false);
+    expect(result.hints.notes.join(' ')).toContain('timeout_ms');
+  });
+
+  it('watch/bridge 真实长驻进程超时:timed_out + partial + 部分输出(e2e)', async () => {
+    // action 会被拼在 argv 首位,故用「同名脚本文件 + cwd」让 node 跑起长驻进程:
+    // node watch → 执行 cwd 下的 watch 文件(node 对无扩展名文件按 CommonJS 处理)
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-victauri-cli-'));
+    try {
+      for (const name of ['watch', 'bridge']) {
+        writeFileSync(
+          join(dir, name),
+          'console.log("partial-output-ok");\nsetInterval(() => {}, 1000);\n',
+          'utf8',
+        );
+      }
+      const longTool = createVictauriCliTool({
+        cliPath: process.execPath,
+        version: '0.8.8',
+      });
+      for (const action of ['watch', 'bridge'] as const) {
+        const result = (await longTool.execute(
+          { action, args: [], cwd: dir, timeout_ms: 1500 },
+          {} as never,
+        )) as CliToolValue;
+        expect(result.timed_out, `${action} 应超时`).toBe(true);
+        expect(result.partial, `${action} 应标记 partial`).toBe(true);
+        expect(result.exit_code).toBeNull();
+        expect(result.stdout).toContain('partial-output-ok');
+        expect(result.hints.long_running).toBe(true);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('hints 按探测到的版本生成:0.8.8 无 --json,0.10.0 有 --json', async () => {
+    const oldTool = createVictauriCliTool({
+      version: '0.8.8',
+      run: fakeRun({
+        exitCode: 0,
+        stdout: DOCTOR_SAMPLE_088,
+        stderr: '',
+        timedOut: false,
+      }),
+    });
+    const oldResult = (await oldTool.execute(
+      { action: 'doctor', args: [] },
+      {} as never,
+    )) as CliToolValue;
+    expect(oldResult.cli_version).toBe('0.8.8');
+    expect(oldResult.hints.notes.join(' ')).not.toContain('--json');
+    expect(JSON.stringify(oldResult.hints)).not.toContain('--json');
+
+    const newTool = createVictauriCliTool({
+      version: '0.10.0',
+      run: fakeRun({
+        exitCode: 0,
+        stdout: DOCTOR_SAMPLE_088,
+        stderr: '',
+        timedOut: false,
+      }),
+    });
+    const newResult = (await newTool.execute(
+      { action: 'doctor', args: [] },
+      {} as never,
+    )) as CliToolValue;
+    expect(newResult.cli_version).toBe('0.10.0');
+    expect(newResult.hints.notes.join(' ')).toContain('--json');
+  });
+
+  it('版本探测走注入的 probeVersion(生产默认走 victauri_cli_status)', async () => {
+    const probeTool = createVictauriCliTool({
+      probeVersion: async () => '0.8.8',
+      run: fakeRun({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+      }),
+    });
+    const result = (await probeTool.execute(
+      { action: 'init', args: [] },
+      {} as never,
+    )) as CliToolValue;
+    expect(result.cli_version).toBe('0.8.8');
+  });
+
+  it('输出 schema 通过 dsh-tools 校验,且真实返回值符合 schema', async () => {
+    const schemaTool = createVictauriCliTool({
+      version: '0.8.8',
+      run: fakeRun({
+        exitCode: 0,
+        stdout: DOCTOR_SAMPLE_088,
+        stderr: '',
+        timedOut: false,
+      }),
+    });
+    const compiled = schemaTool.output.schema;
+    expect(() => assertSupportedJsonSchema(compiled)).not.toThrow();
+    const value = (await schemaTool.execute(
+      { action: 'doctor', args: [] },
+      {} as never,
+    )) as CliToolValue;
+    expect(() => validateJsonSchemaValue(compiled, value)).not.toThrow();
   });
 });

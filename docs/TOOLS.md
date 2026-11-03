@@ -3,9 +3,10 @@
 > 本文件与 README「工具清单」小节、`src/tools/standalone/catalog.ts` 头注释、
 > `src/tools/contract.test.ts` 契约测试共用同一口径：
 > **Victauri 全量 35 个工具**（standalone 20 + compound 15）+ **1 个 CLI 桥工具**
-> + **1 个 CLI 探测工具**。
-> 参数 schema 以 Victauri 官方 tools-reference 文档与本机 0.8.8 实测双重对齐，
-> 每个工具 description 内以 `[实测]` / `[文档]` / `[桥]` 标注字段来源。
+>
+> - **1 个 CLI 探测工具**。
+>   参数 schema 以 Victauri 官方 tools-reference 文档与本机 0.8.8 实测双重对齐，
+>   每个工具 description 内以 `[实测]` / `[文档]` / `[桥]` 标注字段来源。
 
 ## standalone 批（20 个，victauri 名 1:1 映射 dsh `victauri_<name>`）
 
@@ -62,24 +63,86 @@ victauri-plugin 端负责（本层不重复校验）。完整参数清单见各�
 | -------------- | ---------------------------------------------------------------------------- |
 | `victauri_cli` | `init` `check` `test` `record` `doctor` `watch` `invoke` `bridge` `coverage` |
 
-## CLI 探测（1 个）
+子命令口径的**唯一事实源**是 `src/cli-hints.ts` 的 `CLI_ACTION_SPECS`
+（键 = 子命令名，值 = 语义 + 行为标记 + 版本门控提示）；`CLI_ACTIONS`、
+工具参数 `action` 的 enum、提示文案全部由它派生——**新增子命令只改这一处**
+（一致性由 `src/cli-hints.test.ts` 断言：规格表键序 = `CLI_ACTIONS` = 工具 enum）。
 
-| 工具                 | 用途                                                                          | 参数                    |
-| -------------------- | ----------------------------------------------------------------------------- | ----------------------- |
-| `victauri_cli_status` | 探测本机 `victauri` CLI 可用性：版本号 + 实际命中路径 + CLI 子命令口径         | `refresh`（选填，布尔） |
+参数：
+
+| 参数         | 必填 | 说明                                   |
+| ------------ | ---- | -------------------------------------- |
+| `action`     | 是   | 子命令名（enum，见上表）               |
+| `args`       | 否   | 透传给子命令的参数列表（不含子命令名） |
+| `timeout_ms` | 否   | 子进程超时毫秒（默认 120000）          |
+| `cwd`        | 否   | 子进程工作目录（默认继承宿主）         |
 
 返回字段：
 
-| 字段              | 说明                                                             |
-| ----------------- | ---------------------------------------------------------------- |
-| `status`          | `available`（可用）/ `not_found`（未安装或不在 PATH）/ `error`   |
-| `version`         | 版本号（解析自 `--version` 输出；解析不出为 `null`）              |
-| `version_output`  | `--version` 原始输出                                            |
-| `cli_path`        | 实际命中的可执行文件绝对路径；未命中为 `null`                    |
-| `requested_path`  | 本次请求解析到的路径（配置注入值或平台默认名）                    |
-| `source`          | `config`（配置注入）/ `platform_default`（平台默认）             |
-| `actions`         | CLI 子命令口径（同 `CLI_ACTIONS`：9 个）                         |
-| `error`           | 失败时的结构化错误 `{kind, message, hint}`；`available` 时为 `null` |
+| 字段          | 说明                                                                         |
+| ------------- | ---------------------------------------------------------------------------- |
+| `action`      | 实际执行的子命令                                                             |
+| `exit_code`   | 退出码；`null` = 超时强杀或被信号终止                                        |
+| `stdout`      | 标准输出全文                                                                 |
+| `stderr`      | 标准错误全文                                                                 |
+| `timed_out`   | 是否因超时被终止                                                             |
+| `partial`     | 是否只捕获到部分输出（超时强杀或输出被截断）                                 |
+| `cli_version` | 探测到的 CLI 版本；`null` = 未探测到（此时不给版本门控提示）                 |
+| `hints`       | 该子命令的版本感知提示 `{summary, notes[], long_running, interactive}`       |
+| `doctor`      | `doctor` 子命令的结构化报告；非 doctor 子命令或两路都识别不到报告时为 `null` |
+
+### 结构化输出（doctor）
+
+- `doctor` 的文本报告会**额外**解析成结构化对象放进 `doctor` 字段：
+  - `summary`：`Summary:` 行原文；`passed` / `total` / `failed` / `warnings`：计数；
+  - `checks[]`：逐条明细 `{status: PASS|FAIL|WARN, message, detail}`，
+    `detail` 取明细行的缩进续行（无则 `null`）；
+- 原始文本**始终保留**（`stdout` / `stderr` 原样带回），解析不吞内容；
+- 解析顺序为**先 `stdout`、再 `stderr`**：0.8.8 实测报告全文写在 `stderr`
+  （`stdout` 为空串），0.10 起的文档口径是写在 `stdout`，两路都试；
+- 两路都识别不到报告时（如 CLI 报 `error: unexpected argument '--json' found`）
+  `doctor` 为 `null`，由调用方回退看 `stdout` / `stderr` 原文。
+
+### 长驻子命令（watch / bridge）
+
+- `watch` / `bridge` **不会自行退出**，必须显式传 `timeout_ms`；
+- 超时会 kill 子进程，返回 `timed_out=true`、`partial=true`，
+  `stdout` / `stderr` 是**超时前已捕获的部分输出**；
+- 两者都标记 `interactive=false`：`bridge` 是 stdio MCP 代理，本通道（等退出模型）
+  拿不到 stdio 交互会话，只适合短时诊断。
+
+### 版本感知提示（hints）
+
+- `hints.notes` 按**探测到的 CLI 版本**过滤；版本未知（`cli_version=null`）时
+  一律不给版本门控文本（保守不外推）；
+- 例：0.8.8 实测 `doctor` 不接受 `--json`（报 `error: unexpected argument
+'--json' found`），因此 0.8.8 下的提示只说明「CLI 侧结构化输出选项需 0.10.0
+  起才提供」，不建议使用该选项；0.10.0 起才提示该选项可用。
+
+### cwd 用法
+
+- `doctor` 需在 **Tauri 项目根（含 `Cargo.toml`）**执行，否则报告全 `FAIL`
+  （仓根执行实测：`[FAIL] No Cargo.toml found in current directory`），
+  用 `cwd` 指定项目根。
+
+## CLI 探测（1 个）
+
+| 工具                  | 用途                                                                   | 参数                    |
+| --------------------- | ---------------------------------------------------------------------- | ----------------------- |
+| `victauri_cli_status` | 探测本机 `victauri` CLI 可用性：版本号 + 实际命中路径 + CLI 子命令口径 | `refresh`（选填，布尔） |
+
+返回字段：
+
+| 字段             | 说明                                                                |
+| ---------------- | ------------------------------------------------------------------- |
+| `status`         | `available`（可用）/ `not_found`（未安装或不在 PATH）/ `error`      |
+| `version`        | 版本号（解析自 `--version` 输出；解析不出为 `null`）                |
+| `version_output` | `--version` 原始输出                                                |
+| `cli_path`       | 实际命中的可执行文件绝对路径；未命中为 `null`                       |
+| `requested_path` | 本次请求解析到的路径（配置注入值或平台默认名）                      |
+| `source`         | `config`（配置注入）/ `platform_default`（平台默认）                |
+| `actions`        | CLI 子命令口径（同 `CLI_ACTIONS`：9 个）                            |
+| `error`          | 失败时的结构化错误 `{kind, message, hint}`；`available` 时为 `null` |
 
 - CLI 缺失时返回 `status=not_found`，`error.message` 与 `error.hint` 均含安装指引：
   `scoop install victauri` / `mise install victauri` / `cargo install victauri`；
@@ -94,3 +157,7 @@ victauri-plugin 端负责（本层不重复校验）。完整参数清单见各�
 四处同源：README「工具清单」= 本文件 = `catalog.ts` 头注释（standalone 20，
 全量 35 关系说明）= `standalone.test.ts`（从 `STANDALONE_TOOL_COUNT`、
 `CLI_ACTIONS.length` 常量推导断言，不硬编码字面量）。
+
+CLI 子命令口径另有一处同源：`src/cli-hints.ts` 的 `CLI_ACTION_SPECS` =
+`CLI_ACTIONS` = 工具参数 enum = 本文件「CLI 桥」表（由
+`src/cli-hints.test.ts` 断言）。
