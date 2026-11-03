@@ -2,8 +2,8 @@
  * dsh-victauri 插件入口。
  *
  * 主通道 REST 直连（discovery 自动发现 → POST /api/tools/{name}）+
- * 辅通道 victauri CLI spawn；36 个 dsh 工具 = 20 standalone + 15 compound
- * + 1 CLI 桥（口径见 docs/TOOLS.md 与 src/tools/contract.test.ts）。
+ * 辅通道 victauri CLI spawn；37 个 dsh 工具 = 20 standalone + 15 compound
+ * + 1 CLI 桥 + 1 CLI 探测（口径见 docs/TOOLS.md 与 src/tools/contract.test.ts）。
  *
  * 依赖注入：tools（工具注册表）。连接惰性建立——首次工具调用才 discovery
  * 探活，Tauri app 未启动不影响插件装载。
@@ -17,6 +17,7 @@ import { resolveConfig, type ResolvedVictauriConfig } from './config.ts';
 import { scanInstances } from './discovery.ts';
 import { VictauriError } from './errors.ts';
 import { createVictauriCliTool } from './tools/cli.ts';
+import { createVictauriCliStatusTool } from './tools/cli-status.ts';
 import {
   COMPOUND_TOOL_SPECS,
   createCompoundTools,
@@ -32,9 +33,9 @@ export const name = 'dsh-victauri';
 /** 依赖注入：工具注册表。 */
 export const inject: string[] = ['tools'];
 
-/** 全量工具数（20 standalone + 15 compound + 1 CLI 桥）。 */
+/** 全量工具数（20 standalone + 15 compound + 1 CLI 桥 + 1 CLI 探测）。 */
 export const TOTAL_TOOL_COUNT =
-  REST_TOOL_SPECS.length + COMPOUND_TOOL_SPECS.length + 1;
+  REST_TOOL_SPECS.length + COMPOUND_TOOL_SPECS.length + 2;
 
 /**
  * 按配置建立 REST 客户端（portOverride 固定端口优先，否则 connectAuto）。
@@ -99,11 +100,12 @@ export function apply(ctx: Context, configInput?: unknown): void {
     return clientPromise;
   };
 
-  // 3. 组装 36 工具并按 disabledTools 过滤。
+  // 3. 组装 37 工具并按 disabledTools 过滤。
   const tools: ToolDefinition[] = [
     ...createStandaloneTools(REST_TOOL_SPECS, { getClient }),
     ...createCompoundTools({ getClient }),
     createVictauriCliTool(config.cliPath ? { cliPath: config.cliPath } : {}),
+    createVictauriCliStatusTool(config.cliPath ? { cliPath: config.cliPath } : {}),
   ];
   const disabled = new Set(config.disabledTools);
   const enabledTools = tools.filter((tool) => !disabled.has(tool.name));

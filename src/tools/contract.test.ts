@@ -1,5 +1,5 @@
 /**
- * 包级契约测试：三批工具（standalone 20 + compound 15 + CLI 桥 1 = 36）
+ * 包级契约测试：四批工具（standalone 20 + compound 15 + CLI 桥 1 + CLI 探测 1 = 37）
  * 的名字唯一性、前缀统一、数量口径与复合工具 action 结构。
  *
  * 口径四处一致：本文件 = README「工具清单」= docs/TOOLS.md = catalog 头注释。
@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { victauriCliTool } from './cli.ts';
+import { victauriCliStatusTool } from './cli-status.ts';
 import {
   COMPOUND_TOOL_SPECS,
   COMPOUND_TOOL_COUNT,
@@ -20,16 +21,16 @@ import {
 import { createStandaloneTools } from './standalone/bridge.ts';
 
 describe('dsh-victauri 工具面契约', () => {
-  it('数量口径:standalone 20 + compound 15 + CLI 1 = 36,与 README/docs/catalog 一致', () => {
+  it('数量口径:standalone 20 + compound 15 + CLI 1 + CLI 探测 1 = 37,与 README/docs/catalog 一致', () => {
     expect(STANDALONE_TOOL_COUNT).toBe(20);
     expect(COMPOUND_TOOL_COUNT).toBe(15);
     expect(STANDALONE_TOOL_COUNT + COMPOUND_TOOL_COUNT).toBe(35);
-    expect(STANDALONE_TOOL_COUNT + COMPOUND_TOOL_COUNT + 1).toBe(36);
+    expect(STANDALONE_TOOL_COUNT + COMPOUND_TOOL_COUNT + 2).toBe(37);
     expect(REST_TOOL_SPECS).toHaveLength(STANDALONE_TOOL_COUNT);
     expect(COMPOUND_TOOL_SPECS).toHaveLength(COMPOUND_TOOL_COUNT);
   });
 
-  it('36 个 dsh 工具名全局唯一且统一 victauri_ 前缀', () => {
+  it('37 个 dsh 工具名全局唯一且统一 victauri_ 前缀', () => {
     const standalone = createStandaloneTools(REST_TOOL_SPECS, {
       getClient: null as never,
     });
@@ -38,9 +39,10 @@ describe('dsh-victauri 工具面契约', () => {
       ...standalone.map((t) => t.name),
       ...compound.map((t) => t.name),
       victauriCliTool.name,
+      victauriCliStatusTool.name,
     ];
-    expect(names).toHaveLength(36);
-    expect(new Set(names).size).toBe(36);
+    expect(names).toHaveLength(37);
+    expect(new Set(names).size).toBe(37);
     for (const name of names) {
       expect(name.startsWith('victauri_'), name).toBe(true);
     }

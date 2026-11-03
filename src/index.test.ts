@@ -34,31 +34,32 @@ describe('dsh-victauri', () => {
     expect(inject).toEqual(['tools']);
   });
 
-  it('TOTAL_TOOL_COUNT 与 20+15+1 口径一致', () => {
+  it('TOTAL_TOOL_COUNT 与 20+15+1+1 口径一致', () => {
     expect(TOTAL_TOOL_COUNT).toBe(
-      REST_TOOL_SPECS.length + COMPOUND_TOOL_SPECS.length + 1,
+      REST_TOOL_SPECS.length + COMPOUND_TOOL_SPECS.length + 2,
     );
-    expect(TOTAL_TOOL_COUNT).toBe(36);
+    expect(TOTAL_TOOL_COUNT).toBe(37);
   });
 
-  it('apply 注册全量 36 工具并打印装载日志', () => {
+  it('apply 注册全量 37 工具并打印装载日志', () => {
     const ctx = stubCtx();
     vi.spyOn(console, 'log').mockImplementation((msg: string) => {
       ctx.log.push(msg);
     });
     apply(ctx as never);
-    expect(ctx.tools.register).toHaveBeenCalledTimes(36);
+    expect(ctx.tools.register).toHaveBeenCalledTimes(37);
     expect(
       ctx.log.some((line) => line.startsWith(`[${name}] plugin loaded`)),
     ).toBe(true);
     expect(
-      ctx.log.some((line) => line.includes('registered 36 victauri tools')),
+      ctx.log.some((line) => line.includes('registered 37 victauri tools')),
     ).toBe(true);
     const names = ctx.tools.register.mock.calls.map(
       (call) => (call[0] as { name: string }).name,
     );
-    expect(new Set(names).size).toBe(36);
+    expect(new Set(names).size).toBe(37);
     expect(names).toContain('victauri_cli');
+    expect(names).toContain('victauri_cli_status');
     expect(names).toContain('victauri_eval_js');
     expect(names).toContain('victauri_introspect');
   });
@@ -69,7 +70,7 @@ describe('dsh-victauri', () => {
       ctx.log.push(msg);
     });
     apply(ctx as never, { disabledTools: ['victauri_trace', 'victauri_cli'] });
-    expect(ctx.tools.register).toHaveBeenCalledTimes(34);
+    expect(ctx.tools.register).toHaveBeenCalledTimes(35);
     const names = ctx.tools.register.mock.calls.map(
       (call) => (call[0] as { name: string }).name,
     );
@@ -80,12 +81,12 @@ describe('dsh-victauri', () => {
     ).toBe(true);
   });
 
-  it('非法配置降级默认（工具照常注册 36）', () => {
+  it('非法配置降级默认（工具照常注册 37）', () => {
     const ctx = stubCtx();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     apply(ctx as never, { requestTimeoutMs: 'not-a-number' });
-    expect(ctx.tools.register).toHaveBeenCalledTimes(36);
+    expect(ctx.tools.register).toHaveBeenCalledTimes(37);
     expect(logSpy).toHaveBeenCalled();
   });
 });

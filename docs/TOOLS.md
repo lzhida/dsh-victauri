@@ -1,8 +1,9 @@
-# 工具清单（口径：35 victauri 工具 + 1 CLI 桥 = 36 dsh 工具）
+# 工具清单（口径：35 victauri 工具 + 1 CLI 桥 + 1 CLI 探测 = 37 dsh 工具）
 
 > 本文件与 README「工具清单」小节、`src/tools/standalone/catalog.ts` 头注释、
 > `src/tools/contract.test.ts` 契约测试共用同一口径：
-> **Victauri 全量 35 个工具**（standalone 20 + compound 15）+ **1 个 CLI 桥工具**。
+> **Victauri 全量 35 个工具**（standalone 20 + compound 15）+ **1 个 CLI 桥工具**
+> + **1 个 CLI 探测工具**。
 > 参数 schema 以 Victauri 官方 tools-reference 文档与本机 0.8.8 实测双重对齐，
 > 每个工具 description 内以 `[实测]` / `[文档]` / `[桥]` 标注字段来源。
 
@@ -60,6 +61,33 @@ victauri-plugin 端负责（本层不重复校验）。完整参数清单见各�
 | 工具           | 子命令（action 枚举）                                                        |
 | -------------- | ---------------------------------------------------------------------------- |
 | `victauri_cli` | `init` `check` `test` `record` `doctor` `watch` `invoke` `bridge` `coverage` |
+
+## CLI 探测（1 个）
+
+| 工具                 | 用途                                                                          | 参数                    |
+| -------------------- | ----------------------------------------------------------------------------- | ----------------------- |
+| `victauri_cli_status` | 探测本机 `victauri` CLI 可用性：版本号 + 实际命中路径 + CLI 子命令口径         | `refresh`（选填，布尔） |
+
+返回字段：
+
+| 字段              | 说明                                                             |
+| ----------------- | ---------------------------------------------------------------- |
+| `status`          | `available`（可用）/ `not_found`（未安装或不在 PATH）/ `error`   |
+| `version`         | 版本号（解析自 `--version` 输出；解析不出为 `null`）              |
+| `version_output`  | `--version` 原始输出                                            |
+| `cli_path`        | 实际命中的可执行文件绝对路径；未命中为 `null`                    |
+| `requested_path`  | 本次请求解析到的路径（配置注入值或平台默认名）                    |
+| `source`          | `config`（配置注入）/ `platform_default`（平台默认）             |
+| `actions`         | CLI 子命令口径（同 `CLI_ACTIONS`：9 个）                         |
+| `error`           | 失败时的结构化错误 `{kind, message, hint}`；`available` 时为 `null` |
+
+- CLI 缺失时返回 `status=not_found`，`error.message` 与 `error.hint` 均含安装指引：
+  `scoop install victauri` / `mise install victauri` / `cargo install victauri`；
+- 配置项 `cliPath` 可注入自定义可执行文件路径（仅注入，不暴露给模型）；
+- `cli_path` 为 **PATH 顺序下第一个实际命中**的可执行文件：同一台机器上可能与 `where.exe victauri` 的首条不同
+  （例如 cargo 安装目录 `~/.cargo/bin` 优先于 mise shims），两条都是有效安装位置，不影响可用性判断；
+- 探测只做「定位 + `--version`」两步，不执行任何 CLI 子命令；
+- 结果默认缓存 60s，传 `refresh=true` 强制重新探测。
 
 ## 口径一致性
 
