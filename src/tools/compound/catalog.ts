@@ -1,9 +1,17 @@
 /**
  * compound 批工具目录（15 个，action 参数结构：一个 dsh 工具覆盖一组子动作）。
  *
- * 参数 schema 来源：
+ * 参数 schema 来源（每个工具已标注）：
  * - [桥] 本机 victauri bridge 0.8.8 暴露的 MCP 工具 schema（action 枚举与参数名）；
- * - [文档] tools-reference（0.10.2）——与桥一致处不另标注，漂移处显式注明。
+ * - [文档] 上游 tools-reference（0.10.3）——当前目标口径；
+ * - [源码] 上游 victauri-plugin 0.10.2 crate 源码（compound_params.rs 等）——参数
+ *   结构体的真实字段集，用于判定某参数在哪个服务端版本起存在。
+ *
+ * 基线声明（0.10.3 对齐）：以 [文档 0.10.3] 为基线，与 [桥 0.8.8] 实测及
+ * [源码 0.10.2] 逐项核对；一致处不另标注，差异处按来源标注。
+ * 新增 action/参数全部为透传型：0.8.8 服务端收到未知 action 会按 serde
+ * 未知枚举值报错（新增 logs 子动作属此类），未知**参数**则被静默忽略
+ * （两版 crate 均未开启 `deny_unknown_fields`）。
  *
  * 与 standalone 的差异：复合工具只有 `action` 是必填 enum，其余参数按子动作可选，
  * 服务端（victauri-plugin）负责子动作级校验，本层只透传。
@@ -17,21 +25,9 @@
  */
 import type { ParameterPropertySpec } from '@deepseek-ai/dsh-tools';
 
-import { BOOL, INT, STR, WEBVIEW } from '../standalone/catalog.ts';
+import { BOOL, ENUM, INT, STR, WEBVIEW } from '../standalone/catalog.ts';
 import type { RestToolSpec } from '../standalone/catalog.ts';
 import { JSON_VALUE } from '../standalone/json-value.ts';
-
-/** enum 参数辅助（复合工具的 action 与子级枚举）。 */
-const ENUM = (
-  description: string,
-  values: readonly string[],
-  required = false,
-) => ({
-  type: 'string' as const,
-  enum: [...values],
-  description,
-  ...(required ? { required: true as const } : {}),
-});
 /** 开放对象参数辅助（headers/args/state 等 JSON 对象透传）。 */
 const OBJ = (description: string) => ({
   type: 'object' as const,
@@ -53,30 +49,30 @@ const STRARR = (description: string) => ({
 /**
  * explain 的 webview_label。
  *
- * [文档] 服务端 0.10.2 的 `ExplainParams.webview_label` 确实存在
- * （源码 `introspection_params.rs:166-168`，别名 `window`，缺省 main 窗口）；
- * 0.8.8 的 ExplainParams 只有 action + seconds，serde 未开启
- * `deny_unknown_fields`，故传入被静默忽略、不报错
- * （[INFERENCE] 待批四 4/6 活体证实）。
+ * [源码] 服务端 0.10.2 的 `ExplainParams.webview_label` 存在
+ * （`introspection_params.rs:158-169`，别名 `window`，缺省 main 窗口）；
+ * 0.8.8 的 ExplainParams 只有 action + seconds（`introspection_params.rs:160-167`），
+ * 且两版 crate 均未开启 `deny_unknown_fields`（全仓 grep 无命中），
+ * 故旧服务端收到该字段会静默忽略、不报错。
  */
 const WEBVIEW_LABEL_EXPLAIN = STR(
-  '目标 webview 标签（缺省 main 窗口）。[文档] 服务端 0.10.2 起支持' +
-    '（ExplainParams.webview_label，别名 window）；0.8.8 服务端无此字段、' +
-    '传入被忽略且不报错（[INFERENCE] 待批四 4/6 活体证实）',
+  '目标 webview 标签（缺省 main 窗口）。[源码] 服务端 0.10.2 起支持' +
+    '（ExplainParams.webview_label，别名 window）；0.8.8 服务端无此字段，' +
+    '传入被静默忽略、不报错',
 );
 
 /**
  * fault 的 webview_label。
  *
- * [文档] 0.10.x fallback schema 口径含该字段；但服务端 0.10.2 的
- * `FaultParams`（源码 `introspection_params.rs:119-142`）**未定义**
- * webview_label，故当前传入会被忽略、不改变故障规则作用域
- * （[INFERENCE] 待批四 4/6 活体证实后定去留）。
+ * [源码] 服务端 0.10.2 的 `FaultParams`（`introspection_params.rs:119-142`）
+ * 与 0.8.8 的 FaultParams（`introspection_params.rs:121-144`）**均未定义**
+ * webview_label，故传入会被忽略、不改变故障规则作用域；
+ * 上游 0.10.x 的 fallback 工具清单口径含该字段，仅是工具清单口径。
  */
 const WEBVIEW_LABEL_FAULT = STR(
-  '目标 webview 标签（对齐 0.10.x fallback schema 口径）。[文档] 服务端 ' +
-    '0.10.2 的 FaultParams 未定义该字段，传入会被忽略、不改变故障规则的' +
-    '作用域（[INFERENCE] 待批四 4/6 活体证实后定去留）',
+  '目标 webview 标签（对齐 0.10.x fallback 工具清单口径）。[源码] 服务端 ' +
+    '0.8.8 与 0.10.2 的 FaultParams 均未定义该字段，传入会被忽略、' +
+    '不改变故障规则的作用域',
 );
 
 /** action 参数（每个复合工具的公共必填头，枚举值见各规格）。 */
@@ -280,7 +276,25 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       '日志与监控动作：console 捕获的 console.log/warn/error；network 被拦截的 fetch/XHR；' +
       'ipc IPC 调用日志（wait_for_capture=true 等待至多 500ms 抓响应体）；navigation URL 变更史；' +
       'dialogs alert/confirm/prompt 事件；events 合并事件流；slow_ipc 慢调用检测' +
-      '（threshold_ms 过滤）；clear 清 IPC+network 日志（按测试隔离）。 [桥]',
+      '（threshold_ms 过滤）；clear 清 IPC+network 日志（按测试隔离）。' +
+      '后端日志（Rust 侧）：backend 结构化条目（typed fields/span context/thread/file:line，' +
+      '按 level/target/filter/fields 过滤，用 since_seq 游标分页）；backend_digest 摘要' +
+      '（每级计数/最吵 target/重复消息折叠模板/近期告警/每个 panic，先看它）；' +
+      'stdout 由 victauri run 捕获的原始 stdout/stderr 与进程退出记录' +
+      '（since_seq 向前分页但 next_seq 不透明，含轮转文件标记；' +
+      '[文档 0.10.3] gap:true 表示捕获已轮转越过；[源码] 0.10.2 的 stdout 无 gap 键，' +
+      '0.10.2 的 gap 只出现在 backend 且语义为环形缓冲已淘汰）。' +
+      '游标语义：带 since_seq 的读取返回游标之后最旧的条目、next_seq 紧随其后，' +
+      '需读到 truncated=false；不带 since_seq 取最新。' +
+      '捕获来源需服务端具备后端日志捕获：应用侧装 log_layer/log_logger/wrap_logger 之一' +
+      '（[源码] release 构建不捕获），或经 victauri run 启动；' +
+      '[源码] backend 无捕获源时返回空页并附 hint，stdout 未经 victauri run 启动时返回错误。' +
+      '[文档] 0.10.3 口径（backend/backend_digest/stdout 自 0.10.2 起；bodies 自 0.10.3 起）；' +
+      '[源码] 0.8.8 的 LogsParams 无 level/target/since_seq/fields/bodies，' +
+      '0.10.2 起已含 level/target/since_seq/fields（仅缺 bodies）；' +
+      '0.8.8 另无 backend/backend_digest/stdout 三个动作。' +
+      '旧服务端兼容性：新增动作在 0.8.8 会因未知枚举值报错；' +
+      '新增参数被 serde 静默忽略、不报错（两版服务端均未开 deny_unknown_fields）。 [桥]',
     parameters: {
       action: ACTION('logs', [
         'console',
@@ -291,10 +305,36 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
         'events',
         'slow_ipc',
         'clear',
+        'backend',
+        'backend_digest',
+        'stdout',
       ]),
-      filter: STR('(network) 按 URL 子串过滤'),
-      limit: INT('最多返回条目数'),
-      since: NUM('(console/events) 只返回该 Unix 毫秒时间戳之后'),
+      bodies: BOOL(
+        '(ipc/network) false 时省略 args 与请求/响应体，默认 true（读 1000 条时体积可控）；' +
+          '[文档] 0.10.3 起（0.10.2 及以前的 LogsParams 无此字段，传入被静默忽略、不报错）',
+      ),
+      fields: OBJ(
+        '(backend) 行的结构化字段须与此相等（文本比较，不区分大小写），如 {"run_type":"foreground"}；' +
+          '[源码] 0.10.2 起',
+      ),
+      filter: STR(
+        '(network) 按 URL 子串过滤；(backend/stdout) 对 message/target/fields/spans 的大小写不敏感文本匹配',
+      ),
+      level: STR(
+        '(backend/stdout) 最低级别 trace/debug/info/warn/error；[源码] 0.10.2 起',
+      ),
+      limit: INT(
+        '最多返回条目数；0 = 不返回。默认 100（slow_ipc 20，backend_digest 10）；' +
+          '[源码] 0.10.2 的 backend/backend_digest/stdout 走 clamp，limit=0 被夹为 1',
+      ),
+      since: NUM('(console/events/backend) 只返回该 Unix 毫秒时间戳之后'),
+      since_seq: INT(
+        '(backend/stdout) 游标：只取序号 ≥ 该值的条目（backend 为条目序号，stdout 为字节偏移）；' +
+          '[源码] 0.10.2 起',
+      ),
+      target: STR(
+        '(backend) target 前缀过滤，逗号分隔（如 "app::db,app::sync"）；[源码] 0.10.2 起',
+      ),
       threshold_ms: NUM('(slow_ipc) 慢调用阈值毫秒'),
       wait_for_capture: BOOL('(ipc) true 时等待最新条目响应体抓取完成'),
       webview_label: WEBVIEW,
@@ -336,8 +376,13 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       'checkpoint 保存状态快照（checkpoint_label 起名，省略生成 cp-<uuid>）；' +
       'list_checkpoints 列快照；get_events 取 since_index 之后事件；' +
       'events_between 取两个快照间事件（from/to）；get_replay 取 IPC 回放序列；' +
-      'export/import 会话 JSON 导入导出（session_json）；replay 重放录制命令并与基线比对；' +
-      'flush 立即排干挂起事件（不等 1 秒轮询）。 [桥]',
+      'export/import 会话 JSON 导入导出（session_json）；' +
+      'replay 重放录制命令：录制不含调用参数，故只重放「成功且无参数」的调用，' +
+      '有参数/失败/未完成/被 route 规则应答/走 postMessage 的调用被 skipped 并给出原因，' +
+      '被隐私名单拦截的记为 blocked；passed 只表示重放成功，不与原响应 diff（只报 JSON 类型）；' +
+      '每条调用在录制它的那个窗口重放，窗口不存在即 skipped，绝不回退 main；' +
+      'webview_label 只过滤不重定向；重放真实产生副作用。' +
+      'flush 立即排干挂起事件（不等 1 秒轮询）。 [文档 0.10.3]',
     parameters: {
       action: ACTION('recording', [
         'start',
@@ -368,11 +413,23 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
     title: '网络请求拦截',
     description:
       '网络拦截（Playwright route 等价物，无 CDP）：按 URL 模式匹配 webview 的 fetch/XHR，' +
-      'block 中止 / fulfill 返回 mock 响应（fetch 支持，XHR 回退 delay）/ delay 延迟放行。' +
-      'match_type 选 pattern 语义（substring/glob/regex/exact）；times 限制触发次数；' +
-      '规则按页面作用域，reload 清空。注意：顶层导航/子资源/WebSocket 不拦截；' +
-      'Tauri IPC（ipc.localhost）只观察不控制。add 加规则，list 列规则+触发日志，' +
-      'clear 按 id 删，clear_all 全删，matches 返回拦截日志。 [桥]',
+      'block 中止 / fulfill 返回 mock 响应 / delay 延迟放行。' +
+      'match_type 选 pattern 语义（substring/glob/regex/exact，glob 中 * 匹配任意串、' +
+      '其余字符含 ? 按字面）；times 限制触发次数；规则按页面作用域，reload 清空。' +
+      '[文档 0.10.3] fetch 与 XHR 均支持全部 behavior（fulfill 的 XHR 不会真正触网，' +
+      '按其 responseType 回报状态/头/体）；0.8.8/0.10.2 的服务端 XHR 只支持 block/delay' +
+      '（fulfill 会退化为 delay）。' +
+      '注意：顶层导航/子资源/WebSocket 不拦截。' +
+      'Tauri IPC 规则（fetch 传输：http(s)://ipc.localhost/<cmd>、ipc://localhost/<cmd>）：' +
+      'fulfill 伪造该命令（Rust handler 不执行），headers 含 "Tauri-Response": "ok" 时 ' +
+      'invoke 才 resolve，否则以 body reject（可借此让命令失败）；delay 拦下调用；' +
+      'block 不会让调用失败——被拦截的 fetch 报错后 Tauri 改走 postMessage 重试并沿用至 reload' +
+      '（后端仍会执行）。被规则触碰的调用标记 mocked/route_delay_ms，' +
+      'mocked 调用不进入 ghost detection/command_catalog/coverage/command_timings，' +
+      '被延迟的调用不计入 command_timings；' +
+      'add 返回 ipc_note 提示规则可能命中 IPC URL；postMessage IPC 不受影响。' +
+      'add 加规则，list 列规则+触发日志，clear 按 id 删，clear_all 全删，matches 返回拦截日志。' +
+      '[源码] 0.10.2 的 RouteBehavior 注释仍写 "fetch only; XHR falls back to delay"。 [桥]',
     parameters: {
       action: ACTION('route', ['add', 'list', 'clear', 'clear_all', 'matches']),
       behavior: ENUM('(add) 规则行为', ['block', 'fulfill', 'delay']),
@@ -404,7 +461,8 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
     description:
       '存储操作：get 读 localStorage/sessionStorage（storage_type 选，默认 local）；' +
       'set 写（value 为任意 JSON 值，服务端按 JSON 序列化后写入）；delete 删键；' +
-      'get_cookies 取全部 Cookie。' +
+      'get_cookies 取页面的 Cookie——[源码] 仅非 httpOnly（两版服务端均经 document.cookie 读取），' +
+      'httpOnly Cookie 读不到（0.10.3 文档同）。' +
       'set/delete 受隐私控制约束。 [桥]',
     parameters: {
       action: ACTION('storage', ['get', 'set', 'delete', 'get_cookies']),
@@ -443,7 +501,14 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       'manage 执行窗口动作（manage_action：minimize/unminimize/maximize/unmaximize/' +
       'close/focus/show/hide/fullscreen/unfullscreen/always_on_top/not_always_on_top）；' +
       'resize 调整逻辑像素尺寸（width/height）；move_to 移动（x/y 逻辑像素）；' +
-      'set_title 改标题。label 选目标窗口，省略 = 主窗口。 [桥]',
+      'set_title 改标题；introspectability 探测每个窗口 Victauri 是否真能 introspect' +
+      '（有响应的 JS bridge）；[文档 0.10.3] 在 visible:true 的窗口上不可探' +
+      '（introspectable:false）几乎总是其 capability 缺 victauri:default，' +
+      '需为每个窗口单独配置 capability（不只 main）。' +
+      'label 选目标窗口，省略 = 主窗口。' +
+      '[文档 0.10.3] resize/move_to 返回读回值（物理像素/位置）并附 requested，' +
+      'settled:false 表示约 500ms 内窗口未变化（Linux/macOS 异步生效，窗口管理器可能忽略）。' +
+      '[源码] introspectability 在 0.8.8 与 0.10.2 的 WindowAction 中均已存在。 [桥]',
     parameters: {
       action: ACTION('window', [
         'get_state',
@@ -452,6 +517,7 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
         'resize',
         'move_to',
         'set_title',
+        'introspectability',
       ]),
       height: INT('(resize) 逻辑像素高'),
       label: STR('目标窗口标签（省略 = 主/首个可见窗口）'),

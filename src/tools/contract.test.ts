@@ -116,6 +116,9 @@ describe('dsh-victauri 工具面契约', () => {
         'events',
         'slow_ipc',
         'clear',
+        'backend',
+        'backend_digest',
+        'stdout',
       ],
       navigate: [
         'go_to',
@@ -140,7 +143,15 @@ describe('dsh-victauri 工具面契约', () => {
       route: ['add', 'list', 'clear', 'clear_all', 'matches'],
       storage: ['get', 'set', 'delete', 'get_cookies'],
       trace: ['start', 'stop', 'status', 'frames'],
-      window: ['get_state', 'list', 'manage', 'resize', 'move_to', 'set_title'],
+      window: [
+        'get_state',
+        'list',
+        'manage',
+        'resize',
+        'move_to',
+        'set_title',
+        'introspectability',
+      ],
     };
     expect(Object.keys(EXPECTED_ACTIONS)).toHaveLength(COMPOUND_TOOL_COUNT);
     for (const spec of COMPOUND_TOOL_SPECS) {
@@ -290,5 +301,135 @@ describe('dsh-victauri 工具面契约', () => {
     }
     // wait_for.condition 仍是必填（0.8.8 实测 missing field `condition`）
     expect(propOf('wait_for', 'condition')?.required).toBe(true);
+  });
+
+  it('compound 0.10.3 对齐:logs/window 新动作与参数齐备，route/recording/storage 口径同步', () => {
+    const specOf = (name: string) =>
+      COMPOUND_TOOL_SPECS.find((spec) => spec.name === name)!;
+    const propOf = (name: string, key: string) =>
+      specOf(name).parameters[key] as
+        | {
+            type?: string;
+            description?: string;
+            required?: true;
+            enum?: readonly string[];
+          }
+        | undefined;
+
+    // logs：0.10.2 起新增 backend/backend_digest/stdout 三个动作
+    expect(compoundActionOf(specOf('logs'))).toContain('backend');
+    expect(compoundActionOf(specOf('logs'))).toContain('backend_digest');
+    expect(compoundActionOf(specOf('logs'))).toContain('stdout');
+    // logs：参数全集精确锁定（新增 action 不应顺带引入未登记的参数）
+    expect(Object.keys(specOf('logs').parameters).sort()).toEqual([
+      'action',
+      'bodies',
+      'fields',
+      'filter',
+      'level',
+      'limit',
+      'since',
+      'since_seq',
+      'target',
+      'threshold_ms',
+      'wait_for_capture',
+      'webview_label',
+    ]);
+    // logs：新增参数全部可选（透传型）且带类型
+    for (const key of ['bodies', 'level', 'target', 'fields', 'since_seq']) {
+      const prop = propOf('logs', key);
+      expect(prop, `logs.${key}`).toBeDefined();
+      expect(prop?.required, `logs.${key}.required`).toBeUndefined();
+    }
+    expect(propOf('logs', 'bodies')?.type).toBe('boolean');
+    expect(propOf('logs', 'level')?.type).toBe('string');
+    expect(propOf('logs', 'target')?.type).toBe('string');
+    expect(propOf('logs', 'fields')?.type).toBe('object');
+    expect(propOf('logs', 'since_seq')?.type).toBe('integer');
+    // logs：新增参数须带来源标注（level/target/since_seq/fields 自 0.10.2，bodies 自 0.10.3）
+    for (const key of ['bodies', 'level', 'target', 'fields', 'since_seq']) {
+      expect(
+        propOf('logs', key)?.description,
+        `logs.${key}.description`,
+      ).toMatch(/\[(文档|源码)/);
+    }
+    expect(propOf('logs', 'bodies')?.description).toContain('0.10.3');
+    for (const key of ['level', 'target', 'fields', 'since_seq']) {
+      expect(
+        propOf('logs', key)?.description,
+        `logs.${key}.description`,
+      ).toContain('0.10.2 起');
+    }
+    // logs：描述须写明游标分页语义与 stdout 游标不透明/gap
+    const logsDesc = specOf('logs').description;
+    expect(logsDesc).toContain('next_seq');
+    expect(logsDesc).toContain('gap:true');
+    expect(logsDesc).toContain('backend_digest');
+    expect(logsDesc).toMatch(/带 since_seq 的读取返回游标之后最旧的条目/);
+    expect(logsDesc).toContain('next_seq 不透明');
+    expect(logsDesc).toMatch(/gap:true 表示[^。]*轮转/);
+    // logs：捕获门槛须写明（装 log_layer/log_logger/wrap_logger 之一）
+    expect(logsDesc).toContain('log_layer');
+    expect(logsDesc).toContain('wrap_logger');
+    // logs：版本口径须区分「0.10.2 已有」与「0.8.8 无」
+    expect(logsDesc).toContain(
+      '0.8.8 的 LogsParams 无 level/target/since_seq/fields/bodies',
+    );
+    expect(logsDesc).not.toMatch(/0\.8\.8 与 0\.10\.2 的 LogsParams 无/);
+    expect(logsDesc).toContain('0.10.2 起已含 level/target/since_seq/fields');
+    // logs：须说明「新增动作报错 / 新增参数静默忽略」两类兼容性差异
+    expect(logsDesc).toMatch(/新增动作[^。]*报错/);
+    expect(logsDesc).toMatch(/新增参数[^。]*静默忽略/);
+
+    // window：0.8.8/0.10.2 源码均已含 introspectability 动作
+    expect(compoundActionOf(specOf('window'))).toContain('introspectability');
+    // window：resize/move_to 的读回值 + settled 语义须在描述里
+    const windowDesc = specOf('window').description;
+    expect(windowDesc).toContain('requested');
+    expect(windowDesc).toMatch(/settled:false 表示[^。]*500ms/);
+    expect(windowDesc).toContain('victauri:default');
+    expect(windowDesc).toContain('introspectable');
+
+    // route：0.10.3 起 fetch 与 XHR 都支持 fulfill；Tauri IPC 规则语义须写明
+    const routeDesc = specOf('route').description;
+    expect(routeDesc).toContain('fetch 与 XHR 均支持全部 behavior');
+    expect(routeDesc).not.toContain('只观察不控制');
+    expect(routeDesc).not.toContain('（fetch 支持，XHR 回退 delay）');
+    expect(routeDesc).toContain('Tauri-Response');
+    expect(routeDesc).toContain('ipc.localhost');
+    expect(routeDesc).toContain('invoke 才 resolve');
+    expect(routeDesc).toContain('postMessage');
+    expect(routeDesc).toContain('ipc_note');
+    expect(routeDesc).toContain(
+      '不进入 ghost detection/command_catalog/coverage',
+    );
+    expect(routeDesc).toContain('不计入 command_timings');
+    expect(routeDesc).toContain('postMessage IPC 不受影响');
+
+    // recording：replay 语义改为 0.10.x 口径（只重放无参成功调用、不与基线 diff）
+    const recordingDesc = specOf('recording').description;
+    expect(recordingDesc).toContain('skipped');
+    expect(recordingDesc).toContain('blocked');
+    expect(recordingDesc).toContain('不与原响应 diff');
+    expect(recordingDesc).toContain('绝不回退 main');
+    expect(recordingDesc).toContain('webview_label 只过滤');
+    expect(recordingDesc).toContain('重放真实产生副作用');
+    expect(recordingDesc).not.toMatch(/replay[^。]*与基线比对/);
+
+    // storage：get_cookies 仅非 httpOnly
+    expect(specOf('storage').description).toContain('httpOnly');
+
+    // explain/fault 的 webview_label 已按源码证据定稿，不再留 [INFERENCE] 待证
+    const explainLabel = propOf('explain', 'webview_label');
+    const faultLabel = propOf('fault', 'webview_label');
+    expect(explainLabel).toBeDefined();
+    expect(faultLabel).toBeDefined();
+    expect(explainLabel?.description).not.toContain('[INFERENCE]');
+    expect(faultLabel?.description).not.toContain('[INFERENCE]');
+    expect(explainLabel?.description).toContain('[源码]');
+    expect(faultLabel?.description).toContain('[源码]');
+    expect(explainLabel?.description).toContain('传入被静默忽略、不报错');
+    expect(faultLabel?.description).toContain('均未定义该字段');
+    expect(faultLabel?.description).toContain('不改变故障规则的作用域');
   });
 });
