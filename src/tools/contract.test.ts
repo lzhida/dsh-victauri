@@ -189,4 +189,28 @@ describe('dsh-victauri 工具面契约', () => {
       );
     }
   });
+
+  it('animation 的参数集合与 Rust AnimationParams 1:1（无 limit），trace 的 limit 保留', () => {
+    const animation = COMPOUND_TOOL_SPECS.find((s) => s.name === 'animation');
+    const trace = COMPOUND_TOOL_SPECS.find((s) => s.name === 'trace');
+    // Rust 0.10.2 / 0.8.8 的 AnimationParams 字段集合（不含 limit）
+    const RUST_ANIMATION_PARAMS = [
+      'action',
+      'capture',
+      'clear',
+      'cols',
+      'points',
+      'record',
+      'restore',
+      'selector',
+      'webview_label',
+    ];
+    expect(Object.keys(animation!.parameters).sort()).toEqual(
+      [...RUST_ANIMATION_PARAMS].sort(),
+    );
+    // limit 属 trace.frames 语义，animation 不得再带（批四 2/6 移除）
+    expect(animation!.parameters).not.toHaveProperty('limit');
+    // 合法 limit 不受影响
+    expect(trace!.parameters).toHaveProperty('limit');
+  });
 });

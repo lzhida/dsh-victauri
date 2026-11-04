@@ -99,7 +99,6 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       capture: BOOL('(scrub) 为 true 时每进度点原生截图并返回 filmstrip PNG'),
       clear: BOOL('(sample) 为 true 时调用后清空已录制会话'),
       cols: INT('(scrub) filmstrip 网格列数，默认 ~sqrt(n)'),
-      limit: INT('(frames) 最多返回多少已缓冲帧'),
       points: INT('(scrub) 等分进度点数，默认 20，夹到 2..120'),
       record: BOOL('(sample) true 布防 rAF 录制；false 收读实测曲线'),
       restore: BOOL('(scrub) 默认 true 恢复动画；false 停在终点'),
