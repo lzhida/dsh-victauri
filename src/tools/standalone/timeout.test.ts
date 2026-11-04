@@ -92,6 +92,18 @@ describe('resolveRequestBudgetMs 解析矩阵', () => {
     expect(resolveRequestBudgetMs('app_info', {})).toBeUndefined();
   });
 
+  it('T-3 锁定:invoke_command.timeout_ms 不改变本通道预算(与 wait_for 对照)', () => {
+    // invoke_command 的 timeout_ms 是服务端整次调用预算(0.9.0+),透传给服务端;
+    // 本通道 REST 预算与之脱钩——resolveRequestBudgetMs 不读 invoke_command 的 timeout_ms
+    expect(
+      resolveRequestBudgetMs('invoke_command', { timeout_ms: 120_000 }),
+    ).toBeUndefined();
+    // 对照:wait_for 的同名参数会动态换算为本通道预算(timeout_ms+5s 夹 120s 上限)
+    expect(resolveRequestBudgetMs('wait_for', { timeout_ms: 120_000 })).toBe(
+      120_000,
+    );
+  });
+
   it('优先级锁定:wait_for 动态预算 > spec 声明', () => {
     expect(
       resolveRequestBudgetMs('wait_for', { timeout_ms: 10_000 }, 90_000),

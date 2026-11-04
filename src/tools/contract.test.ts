@@ -259,7 +259,9 @@ describe('dsh-victauri 工具面契约', () => {
     // invoke_command:timeout_ms(0.9.0 引入,0.10.3 文档仍收录)+with_logs(0.10.2)
     expect(propOf('invoke_command', 'timeout_ms')?.type).toBe('integer');
     expect(propOf('invoke_command', 'with_logs')?.type).toBe('boolean');
-    // wait_for:condition 枚举补 log + level/fields/since_seq(0.10.2)
+    // wait_for:condition 枚举补 log + level/fields/since_seq(0.10.2)。
+    // 这是「闭集契约」tripwire：上游 0.10.4+ 新增条件时本断言会红，提示同步插件
+    // 枚举——它锁的是本插件与 0.10.3 口径的一致性，不是上游快照。
     expect(propOf('wait_for', 'condition')?.enum).toEqual([
       'text',
       'text_gone',
@@ -288,26 +290,25 @@ describe('dsh-victauri 工具面契约', () => {
     expect(propOf('find_elements', 'text_exact')?.type).toBe('boolean');
     expect(propOf('find_elements', 'include_hidden')?.type).toBe('boolean');
 
-    // 新增参数全部可选(透传型,不得标 required)且必须带来源标注
-    const NEW_PARAMS: readonly (readonly [string, string])[] = [
-      ['invoke_command', 'timeout_ms'],
-      ['invoke_command', 'with_logs'],
-      ['wait_for', 'level'],
-      ['wait_for', 'fields'],
-      ['wait_for', 'since_seq'],
-      ['find_elements', 'title_attr'],
-      ['find_elements', 'attribute'],
-      ['find_elements', 'attribute_value'],
-      ['find_elements', 'text_exact'],
-      ['find_elements', 'include_hidden'],
+    // 新增参数全部可选(透传型,不得标 required)且来源标注精确到版本源
+    // (T-2 三元组:[工具,参数,期望标注]——防「CHANGELOG 项误标成 [实测]」这类漂移)
+    const NEW_PARAMS: readonly (readonly [string, string, string])[] = [
+      ['invoke_command', 'timeout_ms', '[文档 0.10.3]'],
+      ['invoke_command', 'with_logs', '[文档 0.10.3]'],
+      ['wait_for', 'level', '[文档 0.10.3]'],
+      ['wait_for', 'fields', '[文档 0.10.3]'],
+      ['wait_for', 'since_seq', '[文档 0.10.3]'],
+      ['find_elements', 'title_attr', '[文档 0.10.3]'],
+      ['find_elements', 'attribute', '[CHANGELOG 0.10.3]'],
+      ['find_elements', 'attribute_value', '[CHANGELOG 0.10.3]'],
+      ['find_elements', 'text_exact', '[CHANGELOG 0.10.3]'],
+      ['find_elements', 'include_hidden', '[CHANGELOG 0.10.3]'],
     ];
-    for (const [tool, key] of NEW_PARAMS) {
+    for (const [tool, key, tag] of NEW_PARAMS) {
       const prop = propOf(tool, key);
       expect(prop, `${tool}.${key}`).toBeDefined();
       expect(prop?.required, `${tool}.${key}.required`).toBeUndefined();
-      expect(prop?.description, `${tool}.${key}.description`).toMatch(
-        /\[(文档|CHANGELOG|实测)/,
-      );
+      expect(prop?.description, `${tool}.${key} 来源标注`).toContain(tag);
     }
 
     // 后端日志三段式套路与捕获量旋钮落在 invoke_command / wait_for 描述里

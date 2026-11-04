@@ -10,17 +10,29 @@ import { createRestBridgeTool } from './bridge.ts';
 import { IMAGE_DIR_NAME } from './image.ts';
 import { RENDER_MAX_CHARS, renderJson } from './render.ts';
 
-/** 最小 mock client:只实现 callTool,记录调用入参。 */
+/** 最小 mock client:只实现 callTool,记录调用入参与第三参请求预算。 */
 function mockClient(
   impl: (name: string, args: Record<string, unknown>) => Promise<unknown>,
 ): {
   client: VictauriClient;
-  calls: Array<{ name: string; args: Record<string, unknown> }>;
+  calls: Array<{
+    name: string;
+    args: Record<string, unknown>;
+    budget?: number;
+  }>;
 } {
-  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const calls: Array<{
+    name: string;
+    args: Record<string, unknown>;
+    budget?: number;
+  }> = [];
   const client = {
-    callTool: async (name: string, args: Record<string, unknown>) => {
-      calls.push({ name, args });
+    callTool: async (
+      name: string,
+      args: Record<string, unknown>,
+      budget?: number,
+    ) => {
+      calls.push({ name, args, budget });
       return impl(name, args);
     },
   } as unknown as VictauriClient;
@@ -219,6 +231,55 @@ describe('dsh-victauri standalone 批', () => {
     }) as Array<{ text: string }>;
     expect(small[0].text).toContain('"seq": 0');
     expect(small[0].text).not.toContain('已摘要化');
+  });
+
+  it('T-1 闭集枚举在客户端前置拒绝:请求不发出(负向护栏)', async () => {
+    const { client, calls } = mockClient(async () => ({}));
+    const tool = createRestBridgeTool(specOf('wait_for'), {
+      getClient: async () => client,
+    });
+    // 枚举越界:condition:'bogus' 必须被 dsh-tools 参数校验拒绝
+    await expect(
+      tool.execute({ condition: 'bogus', value: 'x' }, {} as never),
+    ).rejects.toThrow(/must be one of/);
+    // 缺必填 condition:同样前置拒绝
+    await expect(tool.execute({ value: 'x' }, {} as never)).rejects.toThrow(
+      /missing required property "condition"/,
+    );
+    // 类型错:since_seq 必须是 integer
+    await expect(
+      tool.execute(
+        { condition: 'log', value: 'ready', since_seq: '42' },
+        {} as never,
+      ),
+    ).rejects.toThrow(/must be an integer/);
+    // 三种越界的请求都未发出(校验在客户端,服务端零流量)
+    expect(calls).toHaveLength(0);
+  });
+
+  it('T-3 invoke_command.timeout_ms 与本通道 REST 预算脱钩(mock 记录第三参)', async () => {
+    const { client, calls } = mockClient(async () => ({ ok: true }));
+    const invokeTool = createRestBridgeTool(specOf('invoke_command'), {
+      getClient: async () => client,
+    });
+    await invokeTool.execute(
+      { command: 'greet', timeout_ms: 120_000 },
+      {} as never,
+    );
+    // timeout_ms 原样透传给服务端(服务端整次调用预算),但第三参 budget 为 undefined:
+    // 本通道 REST 预算走客户端默认链(30s),invoke_command 未单独放宽——两层预算独立
+    expect(calls[0]?.args).toEqual({ command: 'greet', timeout_ms: 120_000 });
+    expect(calls[0]?.budget).toBeUndefined();
+
+    // 对照:wait_for 的 timeout_ms 会动态换算为本通道预算(timeout_ms+5s 夹 120s 上限)
+    const waitTool = createRestBridgeTool(specOf('wait_for'), {
+      getClient: async () => client,
+    });
+    await waitTool.execute(
+      { condition: 'url', value: '/ready', timeout_ms: 120_000 },
+      {} as never,
+    );
+    expect(calls[1]?.budget).toBe(120_000);
   });
 
   it('CLI_ACTIONS 与 standalone 目录无工具名冲突(命名空间分离)', () => {
