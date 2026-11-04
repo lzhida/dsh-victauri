@@ -115,8 +115,9 @@ export function runVictauriCli(options: CliRunOptions): Promise<CliRunResult> {
 }
 
 /**
- * victauri CLI 已知子命令（0.8.8 实测 + 0.10 文档）：
- * init/check/test/record/doctor/watch/invoke/bridge/coverage。
+ * victauri CLI 已知子命令（0.10.3 上游顺序，0.8.8 实测为其子集）：
+ * init/check/test/record/doctor/watch/invoke/tools/call/bridge/coverage/run/logs
+ * （上游另有 setup 与本插件有意不接，clap 内置 help 不是可路由 action）。
  *
  * 口径唯一来源已上移到 `src/cli-hints.ts` 的 `CLI_ACTION_SPECS`
  * （子命令 + 语义 + 版本门控提示同表维护）；此处仅做转发，

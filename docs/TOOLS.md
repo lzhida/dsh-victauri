@@ -154,9 +154,16 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 
 ## CLI 桥（1 个）
 
-| 工具           | 子命令（action 枚举）                                                        |
-| -------------- | ---------------------------------------------------------------------------- |
-| `victauri_cli` | `init` `check` `test` `record` `doctor` `watch` `invoke` `bridge` `coverage` |
+| 工具           | 子命令（action 枚举）                                                                                                            |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `victauri_cli` | `init` / `check` / `test` / `record` / `doctor` / `watch` / `invoke` / `tools` / `call` / `bridge` / `coverage` / `run` / `logs` |
+
+其中 `tools` / `call` 需 CLI **≥ 0.10.1**，`run` / `logs` 需 CLI **≥ 0.10.2**
+（本机 0.8.8 实测 `victauri --help` 只有 `init` / `check` / `test` / `record` /
+`doctor` / `watch` / `invoke` / `bridge` / `coverage` 这 9 个子命令，无 `tools` /
+`call` / `run` / `logs`；`invoke` 在 0.10.3 仍保留，与 `call` 并存）。
+上游 0.10.3 另有 `setup`（只写 agent 客户端接入指令，`init` 已覆盖首次接入）
+与 clap 内置 `help`（不是可路由 action）——本插件**有意不接**这两个。
 
 子命令口径的**唯一事实源**是 `src/cli-hints.ts` 的 `CLI_ACTION_SPECS`
 （键 = 子命令名，值 = 语义 + 行为标记 + 版本门控提示）；`CLI_ACTIONS`、
@@ -213,9 +220,11 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 - 两路都识别不到报告时（如 CLI 报 `error: unexpected argument '--json' found`）
   `doctor` 为 `null`，由调用方回退看 `stdout` / `stderr` 原文。
 
-### 长驻子命令（watch / bridge）
+### 长驻子命令（watch / bridge / run / logs 的 `--follow`）
 
-- `watch` / `bridge` **不会自行退出**，必须显式传 `timeout_ms`；
+- `watch` / `bridge` / `run` **不会自行退出**，必须显式传 `timeout_ms`；
+  `logs` 只有 `--follow` 模式是长驻（不带 `--follow` 时打印最近若干行即退出），
+  同样需要 `timeout_ms`；
 - 超时会 kill 子进程，返回 `timed_out=true`、`partial=true`，`stdout` /
   `stderr` 是**超时前已捕获的部分输出**（不是完整结果，也不会续传）；
 - `partial=true` 有两个来源：① 超时强杀（`timed_out=true`）；② 单路输出超过
@@ -248,6 +257,42 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
   源码**与官方文档（[INFERENCE]，本机未安装 0.10.2/0.10.3，仅 cargo registry
   有 0.10.2 源码可查；本机 0.8.8 实测 `bridge --help` 与已废弃的 `--wait`
   no-op）。
+
+### 0.10.x 新增子命令（tools / call / run / logs）
+
+- `tools`（需 CLI ≥ 0.10.1）：列出 victauri 工具与其参数（每工具一行；
+  `victauri tools <tool>` 看单个工具；`--json` 输出 MCP 工具对象与 input
+  schema）。无 app 可达时只列内置工具名与描述（参数 schema 来自运行中的 app，
+  拿不到）——本插件已有 `victauri_tools_list` 工具做同类事，且走 REST 主通道、
+  不受 CLI 版本限制。
+- `call`（需 CLI ≥ 0.10.1）：直接触发一次工具调用，比 `invoke` 更通用
+  （`invoke` 只触发 app 的 Tauri IPC 命令）。传参四种形式：`key=value`（字符串）
+  / `key:=json`（任意 JSON）/ 首个参数为 JSON 对象 / `--args-file <path|->`
+  （`-` 读 stdin；Windows PowerShell 下推荐 `--args-file`）。图像结果用 `--out`
+  保存，绝不打印 base64（多张图编号 `<stem>-1.<ext>`）。退出码：`0` 成功 /
+  `1` 工具报错或 app 拒绝（stdout 上 `{"error": …}`）/ `2` 本地问题（参数错、
+  无 app 可达——什么都没发出、或 `--out`/stdout 写不了——但工具确实跑了）/
+  `3` 请求已发出但未完成（超时、连接丢失；工具可能已跑，勿盲目重试）。
+- `invoke`（0.8.8 就有，0.10.3 仍保留）：与 `call` **并存**，共用同一 discovery、
+  信任检查、`--app` pin 与 token；不接受 port/URL/token 参数，永不打印 token。
+- `run`（需 CLI ≥ 0.10.2）：带捕获启动 Tauri app（`victauri run -- <cmd>`）。
+  捕获逐字节透传到终端并同时写 JSONL（记录时间/流/行），末条记录 app 如何退出
+  （退出码/信号/NTSTATUS 解码）；`--capture` 不指定时落私有 per-user 目录
+  `console/<pid>-<ms>.jsonl`。app 内嵌插件经 `logs{action:"stdout"}` 读同一份
+  捕获文件，app 死后也能读。**停止语义**：停止 launcher 会带走 app（Windows job
+  object / Unix 停止信号转发 + DeathWatch 辅助进程）；被强杀的 launcher 不写退出记录，
+  `victauri logs` 会报 `launcher_gone`。
+- `logs`（需 CLI ≥ 0.10.2）：CLI 侧查看或跟随后端日志。选项 `--app` / `--level` /
+  `--target` / `--grep` / `--limit`（默认 100）/ `--follow` / `--digest` /
+  `--stdout` / `--capture` / `--json` / `--interval-ms`（默认 500）；app 未运行时回落最近
+  一次 `victauri run` 的捕获文件。选项互斥：`--target` 与
+  `--stdout`/`--capture`/`--digest` 互斥；`--digest` 与
+  `--follow`/`--stdout`/`--capture`/`--grep`/`--level` 互斥；`--app` 与
+  `--stdout`/`--capture` 互斥。**仅 `--follow` 是长驻用法**（逐行跟随新行，
+  须传 `timeout_ms`）。CLI 侧也提供 `--json`（输出原始 JSON records，不是格式化
+  行），与插件 `logs{action:"backend"}` 同源但面向 CLI 侧。
+- **证据强度**：上游 v0.10.3 `crates/victauri-cli/src/main.rs` 的 clap 变体与
+  各变体 `after_help` 原文（[INFERENCE]，本机 0.8.8 未安装 0.10.x，无法实测）。
 
 ### 如何近似 watch 的多轮效果
 
@@ -314,7 +359,7 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 | `cli_path`       | 实际命中的可执行文件绝对路径；未命中为 `null`                       |
 | `requested_path` | 本次请求解析到的路径（配置注入值或平台默认名）                      |
 | `source`         | `config`（配置注入）/ `platform_default`（平台默认）                |
-| `actions`        | CLI 子命令口径（同 `CLI_ACTIONS`：9 个）                            |
+| `actions`        | CLI 子命令口径（同 `CLI_ACTIONS`：13 个）                           |
 | `error`          | 失败时的结构化错误 `{kind, message, hint}`；`available` 时为 `null` |
 
 - CLI 缺失时返回 `status=not_found`，`error.message` 与 `error.hint` 均含安装指引：
@@ -361,8 +406,8 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 ## 口径一致性
 
 四处同源：README「工具清单」= 本文件 = `catalog.ts` 头注释（standalone 20，
-全量 35 关系说明）= `standalone.test.ts`（从 `STANDALONE_TOOL_COUNT`、
-`CLI_ACTIONS.length` 常量推导断言，不硬编码字面量）。
+全量 35 关系说明）= `standalone.test.ts`（从 `STANDALONE_TOOL_COUNT` 常量推导
+断言，不硬编码字面量；CLI 子命令数 13 是**刻意硬编码**的防漏项断言）。
 
 工具数口径同样由 `src/tools/contract.test.ts` 锁定：38 = standalone 20 + compound 15
 

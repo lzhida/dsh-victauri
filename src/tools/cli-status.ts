@@ -370,8 +370,7 @@ export function createVictauriCliStatusTool(
             type: 'array',
             items: { type: 'string' },
             required: true,
-            description:
-              'CLI 子命令口径（init/check/test/record/doctor/watch/invoke/bridge/coverage）',
+            description: `CLI 子命令口径（${CLI_ACTIONS.join('/')}）`,
           },
           error: {
             oneOf: [

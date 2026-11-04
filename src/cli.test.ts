@@ -81,8 +81,12 @@ describe('dsh-victauri cli bridge', () => {
       'doctor',
       'watch',
       'invoke',
+      'tools',
+      'call',
       'bridge',
       'coverage',
+      'run',
+      'logs',
     ]);
     expect(isCliAction('doctor')).toBe(true);
     expect(isCliAction('nope')).toBe(false);

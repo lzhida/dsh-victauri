@@ -33,6 +33,13 @@ export interface CliActionSpec {
   readonly until?: string;
   /** 长驻子命令：不自行退出，必须配合 timeout_ms。 */
   readonly longRunning?: boolean;
+  /**
+   * 「部分模式才长驻」的补充说明（如 `logs` 仅 `--follow` 长驻）。
+   *
+   * `longRunning` 是静态布尔，描述不了按选项才长驻的子命令；
+   * 这类子命令保持 `longRunning` 不开，另用本字段把「哪种用法长驻」写进提示。
+   */
+  readonly longRunningNote?: string;
   /** 是否支持交互式 stdin；false = 非交互（等退出模型下拿不到交互通道）。 */
   readonly interactive?: boolean;
   /** 版本门控提示。 */
@@ -42,7 +49,16 @@ export interface CliActionSpec {
 /**
  * 子命令规格表（唯一事实源）。
  *
- * 键顺序 = `CLI_ACTIONS` 顺序（`victauri --help` 的 0.8.8 实测顺序）。
+ * 键顺序 = `CLI_ACTIONS` 顺序：对齐上游 0.10.3 的 `victauri --help` 子命令顺序
+ * （Init, Setup, Check, Test, Record, Doctor, Watch, Invoke, Tools, Call, Bridge,
+ * Coverage, Run, Logs）；本机 0.8.8 实测是它的子集（无 setup/tools/call/run/logs，
+ * 且 invoke 仍在）。
+ *
+ * 有意不接的上游子命令：
+ * - `setup`（上游 0.10.0 新增）：只写 agent 客户端接入指令，`init` 已覆盖首次接入；
+ *   需要时按上游 `victauri setup --help` 手工执行。
+ * - clap 内置 `help`：不是可路由的 action。
+ *
  * 新增子命令：在此加一项即可（enum / 提示 / 文档口径同步生效）。
  */
 const SPEC_TABLE = {
@@ -111,8 +127,81 @@ const SPEC_TABLE = {
     ],
   },
   invoke: {
-    summary: '不依赖 dsh 直接触发一次工具调用(参数按子命令约定)',
-    notes: [{ text: '需要 app 在运行;app 未起时调用会失败' }],
+    summary:
+      '不依赖 dsh 直接触发一次 app 的 Tauri IPC 命令(invoke <command> [--args JSON])',
+    notes: [
+      { text: '需要 app 在运行;app 未起时调用会失败' },
+      {
+        text:
+          '上游 0.10.1 起 call 是更通用的入口(可调全部工具);' +
+          '0.10.3 仍保留 invoke(两者并存),故本通道不按版本禁用 invoke',
+        since: '0.10.1',
+      },
+      {
+        text:
+          '上游 invoke 走同一 discovery、信任检查与 --app pin;' +
+          '不接受 port/URL/token 参数,永不打印 token',
+      },
+    ],
+  },
+  tools: {
+    summary:
+      '列出 victauri 工具与其参数(victauri tools 每工具一行,victauri tools <tool> 看单个工具)',
+    since: '0.10.1',
+    notes: [
+      {
+        text:
+          '上游 0.10.1 起提供:从活体 app 的 input schema 列出工具;' +
+          'victauri tools --json 输出 MCP 工具对象与 input schema',
+        since: '0.10.1',
+      },
+      {
+        text: '无 app 可达时只列内置工具名与描述(参数 schema 来自运行中的 app,拿不到)',
+        since: '0.10.1',
+      },
+      {
+        text: '本插件已有 victauri_tools_list 工具做同类事(走 REST 主通道,不受 CLI 版本限制)',
+        since: '0.10.1',
+      },
+    ],
+  },
+  call: {
+    summary:
+      '不依赖 dsh 直接触发一次工具调用(key=value / key:=json / --args-file 传参,图像用 --out 落盘)',
+    since: '0.10.1',
+    notes: [
+      {
+        text:
+          '上游 0.10.1 起提供:比 invoke 更通用——invoke 只触发 app 的 Tauri IPC 命令,' +
+          'call 可调全部工具',
+        since: '0.10.1',
+      },
+      {
+        text:
+          '传参四种形式:key=value(字符串)/ key:=json(任意 JSON 值)/ 首个参数为 JSON 对象 / ' +
+          '--args-file <path|->(- 读 stdin;Windows PowerShell 下推荐 --args-file)',
+        since: '0.10.1',
+      },
+      {
+        text:
+          '图像结果(screenshot/animation scrub/trace frames)用 --out 保存(绝不打印 base64,' +
+          '多张图编号 <stem>-1.<ext>)',
+        since: '0.10.1',
+      },
+      {
+        text:
+          '退出码:0 成功 / 1 工具报错或 app 拒绝(stdout 上 {"error": …}) / ' +
+          '2 本地问题(参数错、无 app 可达——什么都没发出、或 --out/stdout 写不了——但工具确实跑了) / ' +
+          '3 请求已发出但未完成(超时、连接丢失;工具可能已跑,勿盲目重试)',
+        since: '0.10.1',
+      },
+      {
+        text:
+          '与 invoke 同 discovery、信任检查、--app pin 与 token;不接受 port/URL/token 参数,' +
+          '永不打印 token',
+        since: '0.10.1',
+      },
+    ],
   },
   bridge: {
     summary: '启动 stdio MCP 代理(连接时自动发现端口+读 token,--app 过滤)',
@@ -144,13 +233,84 @@ const SPEC_TABLE = {
         text:
           'bridge 是 stdio MCP 代理,本通道(spawn-等退出模型)只能等它退出,' +
           '拿不到 stdio 交互会话;跨 app 重启自动重发现并重建后端会话的能力' +
-          '只存在于上游 CLI 侧的长驻 bridge 进程,本通道没有' +
+          '由上游 CLI 侧的长驻 bridge 进程在内部完成,' +
+          '本通道因 spawn-等退出模型观察不到这个重建过程' +
           '(上游 app 侧会话 id 随 app 重启即失效)',
       },
     ],
   },
   coverage: {
     summary: '报告 #[inspectable] 命令的工具覆盖情况',
+  },
+  run: {
+    summary:
+      '带捕获启动 Tauri app(victauri run -- <cmd>,捕获 stdout/stderr 与退出记录)',
+    since: '0.10.2',
+    longRunning: true,
+    interactive: false,
+    notes: [
+      {
+        text:
+          '上游 0.10.2 起提供:命令写在 -- 之后(如 victauri run -- npm run tauri dev);' +
+          '--capture 指定捕获文件路径,不指定则落私有 per-user 目录 console/<pid>-<ms>.jsonl',
+        since: '0.10.2',
+      },
+      {
+        text:
+          '捕获逐字节透传到终端并同时写 JSONL(记录时间/流/行);末条记录 app 如何退出' +
+          '(退出码/信号/NTSTATUS 解码)',
+        since: '0.10.2',
+      },
+      {
+        text: 'app 内嵌插件经 logs{action:"stdout"} 读同一份捕获文件,app 死后也能读',
+        since: '0.10.2',
+      },
+      {
+        text:
+          '长驻子命令:不会自行退出,必须传 timeout_ms;本通道是 spawn-等退出模型,' +
+          '只能在超时后拿到一次部分输出,拿不到实时增量',
+        since: '0.10.2',
+      },
+      {
+        text:
+          '停止 launcher 会带走 app(Windows job object / Unix 停止信号转发 + DeathWatch 辅助进程);' +
+          '被强杀的 launcher 不写退出记录,victauri logs 会报 launcher_gone',
+        since: '0.10.2',
+      },
+    ],
+  },
+  logs: {
+    summary: 'CLI 侧查看或跟随后端日志(victauri logs;--follow 逐行跟随)',
+    since: '0.10.2',
+    longRunningNote:
+      '仅 --follow 是长驻用法(逐行跟随新行,不会自行退出,须传 timeout_ms);' +
+      '不带 --follow 时打印最近若干行即退出',
+    notes: [
+      {
+        text:
+          '上游 0.10.2 起提供:选项 --app/--level/--target/--grep/--limit(默认 100)/' +
+          '--follow/--digest/--stdout/--capture/--json/--interval-ms(默认 500)',
+        since: '0.10.2',
+      },
+      {
+        text: 'app 未运行时回落最近一次 victauri run 的捕获文件',
+        since: '0.10.2',
+      },
+      {
+        text:
+          '选项互斥:--target 与 --stdout/--capture/--digest 互斥;' +
+          '--digest 与 --follow/--stdout/--capture/--grep/--level 互斥;' +
+          '--app 与 --stdout/--capture 互斥',
+        since: '0.10.2',
+      },
+      {
+        text:
+          '上游 logs 也提供 --json(输出原始 JSON records,不是格式化行);' +
+          '与插件 logs{action:"backend"} 同源但面向 CLI 侧;' +
+          '需要 --follow 这类长驻跟随才用本子命令',
+        since: '0.10.2',
+      },
+    ],
   },
 } as const satisfies Record<string, CliActionSpec>;
 
@@ -173,6 +333,22 @@ export interface CliActionHint {
   readonly longRunning: boolean;
   /** 是否支持交互式 stdin。 */
   readonly interactive: boolean;
+}
+
+/**
+ * 版本是否已越过某子命令的 `until` 门槛（上游在该版本起移除/替换该子命令）。
+ *
+ * 版本未知/不可解析一律 false——门控提示宁可不给，也不外推。
+ *
+ * @param spec - 子命令规格。
+ * @param version - 探测到的 CLI 版本；null = 未知。
+ */
+export function isBeyondUntil(
+  spec: CliActionSpec,
+  version: string | null,
+): boolean {
+  if (spec.until === undefined || version === null) return false;
+  return !isBelow(version, spec.until);
 }
 
 /**
@@ -200,6 +376,17 @@ export function buildActionHint(
     !isAtLeast(version, spec.since)
   ) {
     notes.push(`当前 CLI 版本 ${version} 不支持该子命令(需 >= ${spec.since})`);
+  }
+  if (isBeyondUntil(spec, version)) {
+    notes.push(`上游 ${spec.until} 起不再提供该子命令`);
+  }
+  // 「部分模式才长驻」的说明：仅在该子命令本身可用时给出（不可用时先看上面的版本门控）。
+  // 版本未知时同样不给（与 notes 的 isAtLeast 门控保持同一套标准，保守不外推）。
+  if (
+    spec.longRunningNote !== undefined &&
+    (spec.since === undefined || isAtLeast(version, spec.since))
+  ) {
+    notes.push(spec.longRunningNote);
   }
   for (const note of spec.notes ?? []) {
     if (note.since !== undefined && !isAtLeast(version, note.since)) continue;
@@ -232,9 +419,10 @@ export function buildActionHints(
 /**
  * 工具描述文案。
  *
- * 说明：描述里只放**版本无关**的语义与用法（子命令摘要 + timeout_ms/cwd 要求 +
- * 结构化输出说明）；版本相关差异（如某个选项是否可用）随执行结果里的 `hints`
- * 字段返回——那时已经探测到真实版本，避免在描述里写死某个版本才成立的用法。
+ * 说明：描述里给出**子命令语义 + 显式版本门槛**（子命令摘要 + timeout_ms/cwd 要求 +
+ * 结构化输出说明）；某子命令在当前 CLI 上是否可用、以及它有哪些专属参数，随执行结果里的
+ * `hints` 字段返回——那时已经探测到真实版本，避免在描述里写死某个版本才成立的用法。
+ * 摘要里出现的版本专属语法（--args-file / --out / --follow 等）必须同时写明版本门槛。
  *
  * @param version - 已知版本（测试/调用方注入）；null = 未知（描述不含版本门控文本）。
  */
@@ -245,12 +433,16 @@ export function buildCliToolDescription(version: string | null): string {
   return [
     '执行 victauri CLI 子命令(辅通道;victauri 服务经 victauri_* 工具走 REST 主通道)。',
     `action 选择子命令:${actions}。`,
+    '子命令版本门槛:tools/call 需 CLI >= 0.10.1,run/logs 需 >= 0.10.2;' +
+      '摘要里的版本专属参数(--args-file/--out/--follow 等)在旧 CLI 上不存在,' +
+      '是否可用以执行结果的 hints 为准(本机 0.8.8 只有 ' +
+      'init/check/test/record/doctor/watch/invoke/bridge/coverage)。',
     'args 透传给子命令(不含子命令名本身)。',
     'doctor 会输出文本报告;本工具另外把 PASS/FAIL/WARN 明细解析到输出结构的 doctor 字段' +
       '(依次解析 stdout 与 stderr;识别不到报告时 doctor=null,stdout/stderr 原样保留)。',
     'doctor 需在 Tauri 项目根(含 Cargo.toml)执行,否则报告全 FAIL;用 cwd 指定项目根。',
-    '长驻子命令(watch/bridge)不会自行退出,必须传 timeout_ms;超时会 kill 子进程,' +
-      '返回 timed_out=true、partial=true,stdout/stderr 为已捕获的部分输出。',
+    '长驻子命令(watch/bridge/run,以及 logs 的 --follow 模式)不会自行退出,必须传 timeout_ms;' +
+      '超时会 kill 子进程,返回 timed_out=true、partial=true,stdout/stderr 为已捕获的部分输出。',
     'partial 还有第二个来源:单路输出超 512KB 捕获上限(软上限)会追加 [truncated] 标记,' +
       'partial 按该字面量判定;模型侧预览再按头 3000+尾 3000 截断(另含一行省略标记),' +
       '截断前的完整输出仍在返回字段里。',

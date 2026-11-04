@@ -10,6 +10,7 @@ import {
   buildActionHint,
   buildActionHints,
   buildCliToolDescription,
+  isBeyondUntil,
 } from './cli-hints.ts';
 import { isCliAction } from './cli.ts';
 import {
@@ -74,7 +75,8 @@ function collectTextFiles(target: string): string[] {
 describe('dsh-victauri cli 子命令口径与版本感知提示', () => {
   it('CLI_ACTIONS 与规格表同源:新增子命令只需改 CLI_ACTION_SPECS 一处', () => {
     expect(Object.keys(CLI_ACTION_SPECS)).toEqual([...CLI_ACTIONS]);
-    expect(CLI_ACTIONS.length).toBe(9);
+    // 13 = 0.8.8 实测的 9 个 + 上游 0.10.1/0.10.2 新增的 tools/call/run/logs
+    expect(CLI_ACTIONS.length).toBe(13);
     for (const action of CLI_ACTIONS) {
       expect(isCliAction(action)).toBe(true);
       expect(CLI_ACTION_SPECS[action].summary.length).toBeGreaterThan(0);
@@ -303,5 +305,228 @@ describe('dsh-victauri bridge 子命令口径（上游定位 + 本通道边界�
     expect(description).toContain('[truncated]');
     expect(description).toContain(String(PREVIEW_HEAD_CHARS));
     expect(description).toContain(String(PREVIEW_TAIL_CHARS));
+  });
+});
+
+/**
+ * 上游 0.10.1/0.10.2 新增子命令（tools/call/run/logs）的版本门控口径。
+ *
+ * 证据来源：上游 v0.10.3 `crates/victauri-cli/src/main.rs` 的 clap `Commands`
+ * 枚举与各变体的 after_help；本机 0.8.8 `victauri --help` 实测无这四种子命令。
+ */
+describe('dsh-victauri 0.10.x 新增子命令口径（tools/call/run/logs）', () => {
+  /** 规格表键序的「反引号 + 斜杠」连续串（文档/README 清单同源锚点）。 */
+  const CANONICAL_ACTION_LIST = CLI_ACTIONS.map((a) => `\`${a}\``).join(' / ');
+
+  it('0.8.8 下四个新子命令全部标记为不支持,且不泄漏版本专属说明', () => {
+    const hints = buildActionHints('0.8.8');
+    expect(hints.tools.notes.join(' ')).toContain('需 >= 0.10.1');
+    expect(hints.call.notes.join(' ')).toContain('需 >= 0.10.1');
+    expect(hints.run.notes.join(' ')).toContain('需 >= 0.10.2');
+    expect(hints.logs.notes.join(' ')).toContain('需 >= 0.10.2');
+    // 版本专属内容不应出现（--json 是 tools/call 与 logs 的选项）
+    expect(hints.tools.notes.join(' ')).not.toContain('--json');
+    expect(hints.call.notes.join(' ')).not.toContain('--args-file');
+    expect(hints.run.notes.join(' ')).not.toContain('console/<pid>');
+    expect(hints.logs.notes.join(' ')).not.toContain('--digest');
+  });
+
+  it('0.10.1 起 tools/call 的上游口径出现,0.10.2 起 run/logs 出现', () => {
+    const v1011 = buildActionHints('0.10.1');
+    expect(v1011.tools.notes.join(' ')).toContain('上游 0.10.1 起提供');
+    expect(v1011.tools.notes.join(' ')).toContain('--json');
+    expect(v1011.call.notes.join(' ')).toContain('--args-file');
+    expect(v1011.call.notes.join(' ')).toContain('退出码');
+    // 0.10.1 还没有 run/logs
+    expect(v1011.run.notes.join(' ')).toContain('需 >= 0.10.2');
+    expect(v1011.logs.notes.join(' ')).toContain('需 >= 0.10.2');
+
+    const v102 = buildActionHints('0.10.2');
+    expect(v102.run.notes.join(' ')).toContain('上游 0.10.2 起提供');
+    expect(v102.run.notes.join(' ')).toContain('console/<pid>-<ms>.jsonl');
+    expect(v102.logs.notes.join(' ')).toContain('--digest');
+    expect(v102.logs.notes.join(' ')).toContain('--interval-ms');
+  });
+
+  it('tools 的三条上游口径齐备(活体 schema/--json/无 app 与本插件同类工具)', () => {
+    const notes = buildActionHint('tools', '0.10.1');
+    expect(notes.summary).toContain('victauri tools');
+    expect(notes.notes.join(' ')).toContain('活体 app 的 input schema');
+    expect(notes.notes.join(' ')).toContain('--json');
+    expect(notes.notes.join(' ')).toContain('无 app 可达时只列内置工具名');
+    expect(notes.notes.join(' ')).toContain('victauri_tools_list');
+  });
+
+  it('call 的四种传参形式与图像 --out 落盘口径齐备', () => {
+    const notes = buildActionHint('call', '0.10.1').notes.join(' ');
+    for (const form of ['key=value', 'key:=json', 'JSON 对象', '--args-file']) {
+      expect(notes).toContain(form);
+    }
+    expect(notes).toContain('--out');
+    expect(notes).toContain('<stem>-1.<ext>');
+    expect(notes).toContain('base64');
+  });
+
+  it('call 的退出码 0/1/2/3 四语义齐备(含 3 未完成不得盲目重试)', () => {
+    const notes = buildActionHint('call', '0.10.1').notes.join(' ');
+    for (const code of [
+      '0 成功',
+      '1 工具报错或 app 拒绝',
+      '2 本地问题',
+      '3 请求已发出但未完成',
+    ]) {
+      expect(notes).toContain(code);
+    }
+    expect(notes).toContain('勿盲目重试');
+  });
+
+  it('logs 的完整选项清单与默认值齐备', () => {
+    const notes = buildActionHint('logs', '0.10.2').notes.join(' ');
+    for (const opt of [
+      '--app',
+      '--level',
+      '--target',
+      '--grep',
+      '--limit(默认 100)',
+      '--follow',
+      '--digest',
+      '--stdout',
+      '--capture',
+      '--json',
+      '--interval-ms(默认 500)',
+    ]) {
+      expect(notes).toContain(opt);
+    }
+  });
+
+  it('logs 的三组选项互斥、回落 run 捕获与 --json 原始记录口径齐备', () => {
+    const notes = buildActionHint('logs', '0.10.2').notes.join(' ');
+    expect(notes).toContain('--target 与 --stdout/--capture/--digest 互斥');
+    expect(notes).toContain(
+      '--digest 与 --follow/--stdout/--capture/--grep/--level 互斥',
+    );
+    expect(notes).toContain('--app 与 --stdout/--capture 互斥');
+    expect(notes).toContain('回落最近一次 victauri run 的捕获文件');
+    expect(notes).toContain('logs{action:"backend"}');
+    // 上游 CLI 侧本身就出原始 JSON records,不是「结构化 JSON 得用插件工具」
+    expect(notes).toContain('原始 JSON records');
+    expect(notes).not.toContain('需要结构化 JSON 用 logs 工具');
+  });
+
+  it('run 的启动语义、长驻标记与 launcher 停止语义齐备', () => {
+    const hint = buildActionHint('run', '0.10.2');
+    expect(hint.summary).toContain('victauri run -- <cmd>');
+    expect(hint.longRunning).toBe(true);
+    expect(hint.interactive).toBe(false);
+    const notes = hint.notes.join(' ');
+    expect(notes).toContain('命令写在 -- 之后');
+    expect(notes).toContain('timeout_ms');
+    expect(notes).toContain('job object');
+    expect(notes).toContain('launcher_gone');
+    // 上游 Unix 侧没有 PR_SET_PDEATHSIG,不得写成事实
+    expect(notes).not.toContain('PR_SET_PDEATHSIG');
+    expect(notes).toContain('DeathWatch');
+  });
+
+  it('invoke/call 通道边界:同一 discovery/信任检查/--app pin/永不打印 token', () => {
+    const invokeNotes = buildActionHint('invoke', '0.10.3').notes.join(' ');
+    expect(invokeNotes).toContain('discovery');
+    expect(invokeNotes).toContain('信任检查');
+    expect(invokeNotes).toContain('--app pin');
+    expect(invokeNotes).toContain('永不打印 token');
+    const callNotes = buildActionHint('call', '0.10.1').notes.join(' ');
+    expect(callNotes).toContain('discovery');
+    expect(callNotes).toContain('信任检查');
+    expect(callNotes).toContain('--app pin');
+    expect(callNotes).toContain('永不打印 token');
+  });
+
+  it('invoke 与 call 并存:0.10.3 下 invoke 仍可用且提示 call 是更通用入口', () => {
+    const hints = buildActionHints('0.10.3');
+    expect(hints.invoke.notes.join(' ')).not.toContain('不支持该子命令');
+    expect(hints.invoke.notes.join(' ')).toContain('更通用的入口');
+    expect(hints.invoke.notes.join(' ')).toContain('两者并存');
+    // call 侧同样写明比 invoke 更通用
+    expect(hints.call.notes.join(' ')).toContain('比 invoke 更通用');
+  });
+
+  it('invoke 不设 until 门槛:上游 0.10.3 仍保留 invoke', () => {
+    expect(CLI_ACTION_SPECS.invoke.until).toBeUndefined();
+    expect(isBeyondUntil(CLI_ACTION_SPECS.invoke, '0.11.0')).toBe(false);
+    // until 门控本身是活的（不是死字段）：越过门槛时给出提示
+    expect(isBeyondUntil({ summary: 'x', until: '0.11.0' }, '0.11.0')).toBe(
+      true,
+    );
+    expect(isBeyondUntil({ summary: 'x', until: '0.11.0' }, '0.10.3')).toBe(
+      false,
+    );
+    expect(isBeyondUntil({ summary: 'x', until: '0.11.0' }, null)).toBe(false);
+  });
+
+  it('logs 的长驻说明只在子命令可用时给出(部分模式才长驻)', () => {
+    expect(buildActionHint('logs', '0.8.8').notes.join(' ')).not.toContain(
+      '仅 --follow 是长驻用法',
+    );
+    const notes = buildActionHint('logs', '0.10.2').notes.join(' ');
+    expect(notes).toContain('仅 --follow 是长驻用法');
+    expect(notes).toContain('timeout_ms');
+    expect(notes).toContain('不带 --follow');
+    // run 是整条命令都长驻
+    expect(buildActionHint('run', '0.10.2').longRunning).toBe(true);
+    expect(buildActionHint('logs', '0.10.2').longRunning).toBe(false);
+  });
+
+  it('长驻说明的推送矩阵:0.8.8 无 / 0.10.1 无 / 0.10.2 有 / 版本未知无', () => {
+    const marker = '仅 --follow 是长驻用法';
+    expect(buildActionHint('logs', '0.8.8').notes.join(' ')).not.toContain(
+      marker,
+    );
+    expect(buildActionHint('logs', '0.10.1').notes.join(' ')).not.toContain(
+      marker,
+    );
+    expect(buildActionHint('logs', '0.10.2').notes.join(' ')).toContain(marker);
+    // 版本未知时同样不给（与 notes 的版本门控同一套标准）
+    expect(buildActionHint('logs', null).notes.join(' ')).not.toContain(marker);
+    expect(JSON.stringify(buildActionHints(null))).not.toContain(marker);
+  });
+
+  it('工具描述列出全部 13 个子命令(顺序一致)并显式写明版本门槛', () => {
+    const description = buildCliToolDescription(null);
+    // 顺序锁定：各 action 的出现位置必须递增（防重排）
+    const positions = CLI_ACTIONS.map((a) => description.indexOf(`${a}=`));
+    for (const pos of positions) {
+      expect(pos).toBeGreaterThan(-1);
+    }
+    for (let i = 1; i < positions.length; i += 1) {
+      expect(positions[i]).toBeGreaterThan(positions[i - 1]);
+    }
+    expect(description).toContain('watch/bridge/run');
+    expect(description).toContain('logs 的 --follow 模式');
+    // 版本专属语法必须伴随版本门槛说明（否则 0.8.8 用户会照抄不存在的选项）
+    expect(description).toContain('tools/call 需 CLI >= 0.10.1');
+    expect(description).toContain('run/logs 需 >= 0.10.2');
+    expect(description).toContain('以执行结果的 hints 为准');
+  });
+
+  it('文档与 README 的 CLI 子命令清单与规格表整串同源', () => {
+    const docs = readFileSync(join(REPO_ROOT, 'docs/TOOLS.md'), 'utf8');
+    const readme = readFileSync(join(REPO_ROOT, 'README.md'), 'utf8');
+    // 整串连续匹配：删掉清单行时用例必红（逐词 toContain 会被正文里的同名词绕过）
+    expect(docs).toContain(CANONICAL_ACTION_LIST);
+    expect(readme).toContain(CANONICAL_ACTION_LIST);
+  });
+
+  it('文档与 README 的版本门槛与长驻口径一致', () => {
+    const docs = readFileSync(join(REPO_ROOT, 'docs/TOOLS.md'), 'utf8');
+    const readme = readFileSync(join(REPO_ROOT, 'README.md'), 'utf8');
+    expect(docs).toContain('`tools` / `call` 需 CLI **≥ 0.10.1**');
+    expect(docs).toContain('`run` / `logs` 需 CLI **≥ 0.10.2**');
+    expect(readme).toContain('`tools` / `call` 需 CLI ≥ 0.10.1');
+    expect(readme).toContain('`run` / `logs` 需 ≥ 0.10.2');
+    expect(readme).toContain('13 个');
+    expect(docs).toContain('13 个');
+    // 长驻口径两处写法不同（斜杠 vs 带空格），各自锁定
+    expect(docs).toContain('watch / bridge / run');
+    expect(readme).toContain('watch` / `bridge` / `run');
   });
 });

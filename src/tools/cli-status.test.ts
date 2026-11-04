@@ -111,6 +111,22 @@ describe('dsh-victauri victauri_cli_status', () => {
     expect(value.actions).toContain('doctor');
   });
 
+  it('输出 schema 的 actions 描述与 CLI_ACTIONS 同源(不硬编码旧子命令清单)', () => {
+    const tool = createVictauriCliStatusTool({ cliPath: process.execPath });
+    const schema = tool.output.schema as unknown as {
+      properties: Record<string, { description?: string }>;
+    };
+    const description = schema.properties['actions']?.description ?? '';
+    for (const action of CLI_ACTIONS) {
+      expect(description).toContain(action);
+    }
+    // 旧 9 项清单（含 0.10.x 新增子命令缺失）必须已被取代
+    expect(description).toContain('tools');
+    expect(description).toContain('call');
+    expect(description).toContain('run');
+    expect(description).toContain('logs');
+  });
+
   it('CLI 不存在(spawn ENOENT):返回结构化 not_found + 安装指引', async () => {
     const missing = join(workDir, 'not-installed.exe');
     mockSpawn({ error: new Error(`spawn ${missing} ENOENT`) });
