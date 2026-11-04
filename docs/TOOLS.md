@@ -7,8 +7,9 @@
 > - **1 个 CLI 探测工具**。
 > - **1 个工具发现工具**（`victauri_tools_list`，只读查询服务端工具面）。
 >
-> 参数 schema 以 Victauri 官方 tools-reference 文档与本机 0.8.8 实测双重对齐，
-> 每个工具 description 内以 `[实测]` / `[文档]` / `[桥]` 标注字段来源。
+> 参数 schema 以 Victauri 0.10.3 官方 tools-reference 文档 + CHANGELOG 为基线，
+> 与本机 0.8.8 实测及 0.10.2（cargo registry 源码）三源核对对齐，
+> 每个工具 description 内以 `[实测]` / `[文档]` / `[源码]` / `[桥]` 标注字段来源。
 
 ## standalone 批（20 个，victauri 名 1:1 映射 dsh `victauri_<name>`）
 
@@ -74,10 +75,10 @@ Rust `AnimationParams` 在 0.8.8 / 0.10.2 均无该字段）。
 - 标注口径与实现见 `src/tools/compound/catalog.ts` 的 `WEBVIEW_LABEL_EXPLAIN` /
   `WEBVIEW_LABEL_FAULT`，回归锁定见 `src/tools/contract.test.ts`
   （断言两 spec 均含该参数且描述含版本口径）。
-- **活体未验证**：两条口径来自服务端源码核验（0.10.2 `introspection_params.rs`）
-  与 0.8.8 结构对比，非运行实例实测；`[INFERENCE]` 待批四 4/6
-  （活体窗口）证实或证伪。若证伪（服务端拒收未知字段或行为不同），按批四 4/6
-  的结论回滚或加版本门控。
+- **活体复核（2026-11-05，victauri 0.10.3 demo-app）**：`explain` 带
+  `webview_label:'main'` 正常返回 summary（字段生效）；`fault` 带
+  `webview_label:'main'` 注入成功且 `fault list` 可见——与源码口径一致
+  （传入被接受但作用域不按窗口限定）；两条 [源码] 口径经活体证实，无回滚项。
 - 未知字段在服务端被静默忽略（serde 未开启 `deny_unknown_fields`，全 crate 无该
   属性），故 0.8.8 下误传 `webview_label` 不会报错，但也不会生效。
 

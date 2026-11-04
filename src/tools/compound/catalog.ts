@@ -2,13 +2,13 @@
  * compound 批工具目录（15 个，action 参数结构：一个 dsh 工具覆盖一组子动作）。
  *
  * 参数 schema 来源（每个工具已标注）：
- * - [桥] 本机 victauri bridge 0.8.8 暴露的 MCP 工具 schema（action 枚举与参数名）；
- * - [文档] 上游 tools-reference（0.10.3）——当前目标口径；
+ * - [文档] 上游 tools-reference（0.10.3）——当前基线口径；
  * - [源码] 上游 victauri-plugin 0.10.2 crate 源码（compound_params.rs 等）——参数
- *   结构体的真实字段集，用于判定某参数在哪个服务端版本起存在。
+ *   结构体的真实字段集，用于判定某参数在哪个服务端版本起存在；
+ * - [桥] 本机 victauri bridge 0.8.8 暴露的 MCP 工具 schema（action 枚举与参数名）——旧版兼容性参考。
  *
- * 基线声明（0.10.3 对齐）：以 [文档 0.10.3] 为基线，与 [桥 0.8.8] 实测及
- * [源码 0.10.2] 逐项核对；一致处不另标注，差异处按来源标注。
+ * 基线声明（victauri 0.10.3 双源对齐）：以 [文档 0.10.3] + [CHANGELOG 0.10.3] 为基线，
+ * 与 [源码 0.10.2] 及 [桥 0.8.8] 实测逐项核对；一致处不另标注，差异处按来源标注。
  * 新增 action/参数全部为透传型：0.8.8 服务端收到未知 action 会按 serde
  * 未知枚举值报错（新增 logs 子动作属此类），未知**参数**则被静默忽略
  * （两版 crate 均未开启 `deny_unknown_fields`）。
@@ -68,6 +68,8 @@ const WEBVIEW_LABEL_EXPLAIN = STR(
  * 与 0.8.8 的 FaultParams（`introspection_params.rs:121-144`）**均未定义**
  * webview_label，故传入会被忽略、不改变故障规则作用域；
  * 上游 0.10.x 的 fallback 工具清单口径含该字段，仅是工具清单口径。
+ * [活体 0.10.3] 2026-11-05 复核：注入成功且 fault list 可见 = 静默忽略生效，
+ * 与源码口径一致。
  */
 const WEBVIEW_LABEL_FAULT = STR(
   '目标 webview 标签（对齐 0.10.x fallback 工具清单口径）。[源码] 服务端 ' +

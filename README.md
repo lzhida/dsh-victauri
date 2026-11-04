@@ -62,7 +62,7 @@ Victauri 全量 **35 个工具** + 1 个 CLI 桥工具 + 1 个 CLI 探测工具 
 - **别名兼容**：`victauri_eval_js`（`code`/`expression`）与 `victauri_query_db`（`query`/`sql`）双命名兼容，以实测名优先；别名键不透传服务端。
 - **任意 JSON 值参数**：`victauri_assert_semantic` / `victauri_wait_for` 的 `expected` 与 `victauri_storage` 的 `value` 接受任意 JSON 值（数值/对象/数组/布尔/`null`），透传时**不字符串化**（详见 [docs/TOOLS.md](docs/TOOLS.md)「任意 JSON 值参数」）。
 - **数组包装**：顶层数组结果包装为 `{items: [...]}`（dsh 工具契约要求顶层 object）。
-- **版本兼容**：参数 schema 以 victauri 0.8.8（本机桥实测）与 0.10.x（官方文档）双源对齐，字段级差异在工具 description 内以 `[实测]` / `[文档]` / `[桥]` 标注。
+- **版本兼容**：参数 schema 以 victauri 0.10.3（官方文档 + CHANGELOG）为基线，与 0.8.8（本机桥实测）及 0.10.2（cargo registry 源码）双源核对对齐，字段级差异在工具 description 内以 `[实测]` / `[文档]` / `[源码]` / `[桥]` 标注。
 
 ## 故障排查
 

@@ -2,14 +2,14 @@
  * standalone 批工具目录（20 个，victauri 工具名 1:1 映射 dsh victauri_<name>）。
  *
  * 参数 schema 来源（每个工具已标注）：
- * - [实测] 本机活体实例（victauri 0.8.8，REST POST /api/tools/<name> 空参探测
- *   "missing field" 错误消息 + 成功调用返回形状）——旧版服务端行为的权威来源；
- * - [文档] 上游 tools-reference（0.10.3）——当前目标口径；
+ * - [文档] 上游 tools-reference（0.10.3）——当前基线口径；
  * - [CHANGELOG] 上游 CHANGELOG（0.9.0–0.10.3）——文档参数表未收录的新增项以它为准
- *   （例：0.10.3 的 find_elements 四新参、0.9.0 引入的 invoke_command.timeout_ms）。
+ *   （例：0.10.3 的 find_elements 四新参、0.9.0 引入的 invoke_command.timeout_ms）；
+ * - [实测] 本机活体实例历史记录（victauri 0.8.8，REST POST /api/tools/<name> 空参探测
+ *   "missing field" 错误消息 + 成功调用返回形状）——旧版服务端兼容性参考。
  *
- * 基线声明（0.10.3 双源对齐）：以 [文档 0.10.3] + [CHANGELOG 0.10.3] 双源为基线，
- * 与 [实测 0.8.8] 历史记录逐项核对；一致处不另标注，差异处按来源标注。
+ * 基线声明（victauri 0.10.3 双源对齐）：以 [文档 0.10.3] + [CHANGELOG 0.10.3] 双源为基线，
+ * 与 [源码 0.10.2 cargo registry] 及 [实测 0.8.8] 历史记录逐项核对；一致处不另标注，差异处按来源标注。
  * 新增参数全部可选且为透传型（服务端按自身版本校验），旧版服务端不会因
  * "未使用的可选参数" 而失败——仅当真的把新参数发给旧服务端时由服务端自行决定。
  *
