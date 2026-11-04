@@ -152,14 +152,15 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     description:
       '在 Tauri webview 里执行 JavaScript 并返回结果。' +
       '参数名版本差异:本插件参数为 code [实测 0.8.8 报 missing field `code`];' +
-      '文档 0.10 写作 expression——为兼容两种命名,本工具同时接受 expression 并自动归一为 code。' +
+      '上游 0.10.3 文档与 0.10.2 源码(webview_params.rs)均只接受 code,无 expression 别名;' +
+      'expression 是本插件自有的兼容别名,自动归一为 code(见 src/tools/standalone/bridge.ts ARG_ALIASES)。' +
       '异步表达式自动包 await。',
     parameters: {
       code: STR(
         '要执行的 JS 代码;必填:code 或 expression 至少其一 [实测 0.8.8 接受 code]',
       ),
       expression: STR(
-        '(兼容别名)与 code 等价;两者都给时以 code 为准 [文档 0.10 命名]',
+        '(兼容别名,插件自有)与 code 等价;两者都给时以 code 为准 [桥:本地归一 bridge.ts ARG_ALIASES]',
       ),
       webview_label: WEBVIEW,
     },
@@ -298,12 +299,16 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     description:
       '对应用数据目录里的 SQLite 库执行有界只读 SQL(自动发现库文件)。仅 SELECT/PRAGMA/EXPLAIN/WITH。' +
       '必填 query(别名 sql);params 位置绑定参数数组;path 相对 app data 目录;max_rows 默认 100。' +
+      '上游 0.10.3 文档与 0.10.2 源码均只接受 query,无 sql 别名——sql 是本插件自有的兼容别名' +
+      '(见 src/tools/standalone/bridge.ts ARG_ALIASES)。' +
       'schema 来源：[实测 0.8.8 报 missing field `query`] + [文档其余字段]。',
     parameters: {
       query: STR(
         '只读 SQL(SELECT/PRAGMA/EXPLAIN/WITH);必填:query 或 sql 至少其一 [实测 0.8.8 接受 query]',
       ),
-      sql: STR('(别名)与 query 等价;两者都给时以 query 为准 [文档]'),
+      sql: STR(
+        '(兼容别名,插件自有)与 query 等价;两者都给时以 query 为准 [桥:本地归一 bridge.ts ARG_ALIASES]',
+      ),
       params: { type: 'array', description: '位置绑定参数数组 [文档]' },
       path: STR('库文件路径,相对 app data 目录;缺省自动发现 [文档]'),
       max_rows: INT('返回行数上限,默认 100 [文档]'),
@@ -354,7 +359,8 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     title: '前后端状态对照',
     description:
       '对比前端状态(JS 表达式求值)与后端状态,返回含 mismatches 的 VerificationResult。' +
-      '必填 frontend_expr;后端取态二选一:backend_command(经 invoke_command 取)或 backend_state(JSON 直给)。' +
+      '必填 frontend_expr;后端取态二选一:backend_command(经 invoke_command 取)或 backend_state(JSON 直给);' +
+      'backend_command 需要传参时用 backend_args。' +
       'schema 来源：[实测 0.8.8 报 missing field `frontend_expr`] + [文档]。',
     parameters: {
       frontend_expr: STR('返回前端状态对象的 JS 表达式 [实测必填]', true),
@@ -365,6 +371,13 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
         type: 'object',
         additionalProperties: true,
         description: '直给的后端状态 JSON(与 backend_command 互斥) [文档]',
+      },
+      backend_args: {
+        type: 'object',
+        additionalProperties: true,
+        description:
+          'backend_command 的传参对象(仅 backend_command 路径生效;后端命令需要参数时用它,' +
+          '如 {"itemId":42}) [文档 0.10.3 起提供,0.10.2 源码 verification_params.rs 已含]',
       },
       webview_label: WEBVIEW,
     },

@@ -69,7 +69,8 @@ describe('dsh-victauri 工具面契约', () => {
 
   it('compound 每个工具的 action 为必填 enum 且枚举值唯一、与文档子动作一致', () => {
     const EXPECTED_ACTIONS: Record<string, readonly string[]> = {
-      animation: ['list', 'scrub', 'sample', 'clear'],
+      // 0.10.3 基线三动作：clear 已废弃（0.8.8 有、0.10.x 移除，清空改经 sample 的 clear:true）
+      animation: ['list', 'scrub', 'sample'],
       css: ['inject', 'remove'],
       explain: ['summary', 'last_action', 'diff'],
       fault: ['inject', 'list', 'clear', 'clear_all'],
@@ -318,6 +319,38 @@ describe('dsh-victauri 工具面契约', () => {
     }
     // wait_for.condition 仍是必填（0.8.8 实测 missing field `condition`）
     expect(propOf('wait_for', 'condition')?.required).toBe(true);
+  });
+
+  it('批八 2/4 schema 收尾:verify_state backend_args、animation 3 值、别名标注 [桥]', () => {
+    const specOf = (name: string, specs = REST_TOOL_SPECS) =>
+      specs.find((spec) => spec.name === name)!;
+    const propOf = (name: string, key: string) =>
+      specOf(name).parameters[key] as
+        { type?: string; description?: string; required?: true } | undefined;
+
+    // P1-1 verify_state 补 backend_args（上游 verification_params.rs:16 Option<Value>）
+    const backendArgs = propOf('verify_state', 'backend_args');
+    expect(backendArgs).toBeDefined();
+    expect(backendArgs?.type).toBe('object');
+    expect(backendArgs?.required).toBeUndefined();
+    expect(backendArgs?.description).toMatch(/\[文档/);
+    expect(specOf('verify_state').description).toContain('backend_args');
+
+    // P2-4/P2-5 别名标注 [文档]→[桥]（上游两源均无该别名，属插件本地归一）
+    expect(propOf('eval_js', 'expression')?.description).toMatch(/\[桥/);
+    expect(propOf('eval_js', 'expression')?.description).not.toMatch(/\[文档/);
+    expect(propOf('query_db', 'sql')?.description).toMatch(/\[桥/);
+    expect(propOf('query_db', 'sql')?.description).not.toMatch(/\[文档/);
+
+    // P1-2 animation.action 移除已废弃 clear（0.10.3 基线三动作）+ 0.8.8 兼容口径
+    const animation = specOf('animation', COMPOUND_TOOL_SPECS);
+    expect(
+      (animation.parameters['action'] as { enum?: readonly string[] }).enum,
+    ).toEqual(['list', 'scrub', 'sample']);
+    expect(animation.description).toContain('0.8.8');
+    expect(animation.description).toContain('clear:true');
+    // animation 的参数集合不变（clear 参数是 sample 的清空开关，与 action=clear 无关）
+    expect(animation.parameters).toHaveProperty('clear');
   });
 
   it('compound 0.10.3 对齐:logs/window 新动作与参数齐备，route/recording/storage 口径同步', () => {

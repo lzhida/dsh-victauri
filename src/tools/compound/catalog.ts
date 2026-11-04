@@ -91,11 +91,14 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       'scrub 确定性暂停并 seek 到 points 个等分进度点，返回几何曲线（rect+transform+opacity），' +
       'capture=true 另返回 contact-sheet filmstrip（帧图同样落盘 ' +
       '%TEMP%\\dsh-victauri\\，查看用 read_image，展示给用户用 present）；' +
-      'sample 实时录制 rAF 曲线（record=true 布防、false 收读，' +
-      '含丢帧统计）；clear 清空录制。仅 CSS 动画可 seek（JS/rAF 用 sample）。' +
-      '注意：动画仅在运行/挂起时可见——先触发动画再调用。 [桥]',
+      'sample 实时录制 rAF 曲线（record=true 布防、false 收读，含丢帧统计；' +
+      '清空录制用 clear=true 参数）。仅 CSS 动画可 seek（JS/rAF 用 sample）。' +
+      '注意：动画仅在运行/挂起时可见——先触发动画再调用。' +
+      'action 值域基线 0.10.3（list/scrub/sample）：[源码] 0.8.8 另有 clear 动作，0.10.x 起废弃' +
+      '（清空改经 sample 的 clear=true 参数，见 0.10.3 tools-reference），本插件不再暴露 ' +
+      'clear 动作；连 0.8.8 服务端时清空录制请改用 sample + clear:true。 [桥+文档 0.10.3]',
     parameters: {
-      action: ACTION('animation', ['list', 'scrub', 'sample', 'clear']),
+      action: ACTION('animation', ['list', 'scrub', 'sample']),
       capture: BOOL('(scrub) 为 true 时每进度点原生截图并返回 filmstrip PNG'),
       clear: BOOL('(sample) 为 true 时调用后清空已录制会话'),
       cols: INT('(scrub) filmstrip 网格列数，默认 ~sqrt(n)'),
