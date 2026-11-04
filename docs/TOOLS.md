@@ -1,12 +1,14 @@
-# 工具清单（口径：35 victauri 工具 + 1 CLI 桥 + 1 CLI 探测 = 37 dsh 工具）
+# 工具清单（口径：35 victauri 工具 + 1 CLI 桥 + 1 CLI 探测 + 1 工具发现 = 38 dsh 工具）
 
 > 本文件与 README「工具清单」小节、`src/tools/standalone/catalog.ts` 头注释、
 > `src/tools/contract.test.ts` 契约测试共用同一口径：
 > **Victauri 全量 35 个工具**（standalone 20 + compound 15）+ **1 个 CLI 桥工具**
 >
 > - **1 个 CLI 探测工具**。
->   参数 schema 以 Victauri 官方 tools-reference 文档与本机 0.8.8 实测双重对齐，
->   每个工具 description 内以 `[实测]` / `[文档]` / `[桥]` 标注字段来源。
+> - **1 个工具发现工具**（`victauri_tools_list`，只读查询服务端工具面）。
+>
+> 参数 schema 以 Victauri 官方 tools-reference 文档与本机 0.8.8 实测双重对齐，
+> 每个工具 description 内以 `[实测]` / `[文档]` / `[桥]` 标注字段来源。
 
 ## standalone 批（20 个，victauri 名 1:1 映射 dsh `victauri_<name>`）
 
@@ -57,6 +59,28 @@
 victauri-plugin 端负责（本层不重复校验）。完整参数清单见各工具 description
 （`src/tools/compound/catalog.ts`）。
 
+参数集合与 Rust 侧严格 1:1：`victauri_animation` 的参数为 `action` `selector`
+`points` `capture` `restore` `cols` `record` `clear` `webview_label`——**不含**
+`limit`（`limit` 属 `victauri_trace` 的 `frames` 子动作语义，批四 2/6 已移除；
+Rust `AnimationParams` 在 0.8.8 / 0.10.2 均无该字段）。
+
+### `webview_label` 参数（explain / fault）
+
+| 工具               | 参数            | 服务端支持口径                                                                                                    |
+| ------------------ | --------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `victauri_explain` | `webview_label` | 0.10.2 起支持（`ExplainParams.webview_label`，别名 `window`，缺省 main 窗口）；0.8.8 无此字段，传入被忽略且不报错 |
+| `victauri_fault`   | `webview_label` | 0.10.x fallback schema 口径含该字段，但服务端 0.10.2 的 `FaultParams` 未定义 → 传入被忽略，**当前不生效**         |
+
+- 标注口径与实现见 `src/tools/compound/catalog.ts` 的 `WEBVIEW_LABEL_EXPLAIN` /
+  `WEBVIEW_LABEL_FAULT`，回归锁定见 `src/tools/contract.test.ts`
+  （断言两 spec 均含该参数且描述含版本口径）。
+- **活体未验证**：两条口径来自服务端源码核验（0.10.2 `introspection_params.rs`）
+  与 0.8.8 结构对比，非运行实例实测；`[INFERENCE]` 待批四 4/6
+  （活体窗口）证实或证伪。若证伪（服务端拒收未知字段或行为不同），按批四 4/6
+  的结论回滚或加版本门控。
+- 未知字段在服务端被静默忽略（serde 未开启 `deny_unknown_fields`，全 crate 无该
+  属性），故 0.8.8 下误传 `webview_label` 不会报错，但也不会生效。
+
 ## 图像结果通道（通用落盘）
 
 任何工具返回 `{data, mimeType}` 形态的图像值（顶层对象或含此类值的多块数组）
@@ -103,6 +127,31 @@ REST 工具调用（standalone 20 + compound 15）的超时按**四级优先级*
 - CLI 桥 `victauri_cli` 不受本机制影响（子进程超时走自己的 `timeout_ms`
   参数，默认 120000，超时返回 `timed_out=true` + 部分输出）。
 
+## 任意 JSON 值参数（`type:'json'`）
+
+三个参数接受**任意 JSON 值**（字符串 / 数值 / 布尔 / `null` / 数组 / 对象），
+schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/json-value.ts`
+的 `JSON_VALUE()` 助手）：
+
+| 工具                       | 参数       | 说明                                                  |
+| -------------------------- | ---------- | ----------------------------------------------------- |
+| `victauri_assert_semantic` | `expected` | 语义断言的期望值（与 `condition` 配合使用）           |
+| `victauri_wait_for`        | `expected` | 轮询条件的期望值（与 `condition` 配合使用）           |
+| `victauri_storage`         | `value`    | `action=set` 要写入的值（服务端按 JSON 序列化后落库） |
+
+- **透传不字符串化**：桥层入参经 `isJsonValue` 守卫收敛为纯 JSON 值后
+  **原样**发送（`src/tools/standalone/bridge.ts`），数值仍是数值、对象仍是
+  对象、数组仍是数组，显式 `null` 原样送达（不会被丢弃、不会变成 `"null"`）。
+  字符串值按字面量送达——服务端 `storage` 用 `serde_json::to_string` 序列化
+  存储，故字符串会带引号落库（服务端既有行为，本层不改写）。
+- **参数校验**：本层只做「是不是 JSON 值」的浅校验，不做深校验（结构/类型
+  语义由服务端 `serde_json::Value` 决定）；必填参数缺失仍由 `defineTool`
+  抛 `ToolArgsError`。
+- **null 口径**：`victauri_assert_semantic` 服务端把未提供的 `expected`
+  视为 `null`，故 `equals null` / `type_is "null"` 可通过（0.10.2 实测口径）。
+- 回归锁定：`src/tools/standalone/json-value.test.ts`（schema 放开矩阵、
+  透传形状、`null` 原样、守卫丢弃 `undefined` 与非 JSON 值）。
+
 ## CLI 桥（1 个）
 
 | 工具           | 子命令（action 枚举）                                                        |
@@ -136,6 +185,20 @@ REST 工具调用（standalone 20 + compound 15）的超时按**四级优先级*
 | `cli_version` | 探测到的 CLI 版本；`null` = 未探测到（此时不给版本门控提示）                 |
 | `hints`       | 该子命令的版本感知提示 `{summary, notes[], long_running, interactive}`       |
 | `doctor`      | `doctor` 子命令的结构化报告；非 doctor 子命令或两路都识别不到报告时为 `null` |
+
+### 渲染预览（模型侧可见文本）
+
+- 返回字段里的 `stdout` / `stderr` 是**全文**；模型实际看到的**预览文本**按
+  **头尾双保留** 截断：总上限 **6000 字符**（与 `renderJson` 同口径），
+  头 3000 + 尾 3000，中间插入 `…(截断,省略中间 N 字符,共 M 字符)` 标记；
+- 只留头部会把尾部丢掉（真实报错常在最后几行），故必须保留尾部；
+- 按**码点**切片（`Array.from`），多字节字符不会被切碎；
+- 预览取 `stderr || stdout`（stderr 非空时优先 stderr）；`doctor` 的结构化
+  明细块照旧**全量展示**，不受预览截断影响；
+- 与另一层机制相互独立：`src/cli.ts` 的单路捕获上限 512KB（超出追加
+  `[truncated]` 标记并置 `partial=true`）；
+- 回归锁定：`src/tools/cli.test.ts`（长输出头尾共存 + 省略标记 + 短输出原样
+  - 多字节不切碎）。
 
 ### 结构化输出（doctor）
 
@@ -198,11 +261,49 @@ REST 工具调用（standalone 20 + compound 15）的超时按**四级优先级*
 - 探测只做「定位 + `--version`」两步，不执行任何 CLI 子命令；
 - 结果默认缓存 60s，传 `refresh=true` 强制重新探测。
 
+## 工具发现（1 个，`victauri_tools_list`）
+
+只读查询服务端当前实际工具面，并把服务端清单与插件静态暴露面的**双向差异**以告警形式呈现。
+
+| 参数                   | 类型    | 默认    | 说明                                      |
+| ---------------------- | ------- | ------- | ----------------------------------------- |
+| `include_descriptions` | boolean | `false` | 是否附带服务端工具描述（截断至 200 字符） |
+
+返回字段：
+
+| 字段            | 说明                                                                        |
+| --------------- | --------------------------------------------------------------------------- |
+| `tools`         | 服务端返回的工具名清单（已去重、保持服务端顺序）                            |
+| `server_count`  | 服务端工具名数量（去重后）                                                  |
+| `exposed_count` | 插件静态暴露的服务端工具名数量（当前 35）                                   |
+| `in_sync`       | 两侧完全一致时为 `true`；存在任一差异为 `false`                             |
+| `warnings`      | 差异告警数组，元素为 `{kind, name, message}`                                |
+| `descriptions`  | 工具名 → 描述（仅 `include_descriptions=true` 时返回，描述截断至 200 字符） |
+| `error`         | 查询失败时的结构化错误 `{kind, message, hint}`；成功时为 `null`             |
+
+告警类型：
+
+- `not_exposed`——服务端存在、插件未暴露的工具。插件版本落后于服务端时出现，
+  需升级插件后才能调用对应服务端工具；
+- `missing_on_server`——插件暴露、但服务端当前没有的工具（服务端版本落后或该工具被裁剪）。
+
+行为约定：
+
+- **工具面保持静态注册**：服务端新增工具**不会**自动注册为 dsh 工具（避免 schema 契约漂移），
+  本工具只做「差异可见」，不做「动态暴露」；
+- 只读：仅调用 `GET /api/tools`，不触发任何服务端工具执行；
+- 查询失败返回结构化 `error`（`kind`/`hint` 指向 `victauri check` 自检），不抛栈、不吞错。
+
 ## 口径一致性
 
 四处同源：README「工具清单」= 本文件 = `catalog.ts` 头注释（standalone 20，
 全量 35 关系说明）= `standalone.test.ts`（从 `STANDALONE_TOOL_COUNT`、
 `CLI_ACTIONS.length` 常量推导断言，不硬编码字面量）。
+
+工具数口径同样由 `src/tools/contract.test.ts` 锁定：38 = standalone 20 + compound 15
+
+- CLI 桥 1 + CLI 探测 1 + 工具发现 1；该测试同时断言工具面为静态注册
+  （REST/compound 目录均不含 `tools_list`）。
 
 CLI 子命令口径另有一处同源：`src/cli-hints.ts` 的 `CLI_ACTION_SPECS` =
 `CLI_ACTIONS` = 工具参数 enum = 本文件「CLI 桥」表（由
