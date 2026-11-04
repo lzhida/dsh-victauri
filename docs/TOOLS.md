@@ -220,6 +220,20 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 - 两者都标记 `interactive=false`：`bridge` 是 stdio MCP 代理，本通道（等退出模型）
   拿不到 stdio 交互会话，只适合短时诊断。
 
+### watch 子命令（上游语义与本通道边界）
+
+- **上游语义**：监视**测试目录**的文件变化并重跑 `cargo test`
+  （本机 0.8.8 实测 `victauri watch --help` = "Watch test files and re-run on changes"）；
+  选项 `-d/--dir` 指定被监视目录（默认 `tests`）、`-f/--filter` 只跑匹配的测试；
+  需在含 `Cargo.toml` 的 Rust 测试工程里执行，否则上游报找不到 `Cargo.toml`；
+- **输出形态**：人类向 **ANSI 终端文本**（banner 与摘要走 `stderr`）；上游**不提供
+  JSON 结构化输出**，也**没有** `--once`（跑一次即退）/ `--follow`（跟随逐轮）模式；
+- **本通道边界**：插件走 spawn-等退出模型（`src/cli.ts:50-115`），只能在超时后拿到
+  **一次部分输出**，拿不到**逐轮增量**；想要多轮效果，请改用一次性的 `test` /
+  `coverage` 子命令重复调用；
+- **证据强度**：0.8.8 为本机实测；0.10.x 的参数与输出形态以上游源码/文档为准
+  （[INFERENCE]，本机未安装 0.10.3）。
+
 ### 版本感知提示（hints）
 
 - `hints.notes` 按**探测到的 CLI 版本**过滤；版本未知（`cli_version=null`）时

@@ -79,14 +79,31 @@ const SPEC_TABLE = {
     ],
   },
   watch: {
-    summary: '监视 app 服务与 discovery 目录变化',
+    summary:
+      '监视测试目录变化并重跑 cargo test(-d/--dir 默认 tests,-f/--filter 只跑匹配用例)',
     longRunning: true,
     interactive: false,
     notes: [
       {
         text:
+          '上游 watch 语义=监视测试目录的文件变化并重跑 cargo test:' +
+          '-d/--dir 指定被监视目录(默认 tests),-f/--filter 只跑匹配的测试;' +
+          '需在含 Cargo.toml 的 Rust 测试工程里执行,否则上游报找不到 Cargo.toml',
+      },
+      {
+        text:
+          '输出是人类向 ANSI 终端文本(banner 与摘要走 stderr);' +
+          '上游不提供 JSON 结构化输出,也没有 --once(跑一次即退)/--follow(跟随逐轮)模式',
+      },
+      {
+        text:
           '长驻子命令:不会自行退出,必须传 timeout_ms;超时会 kill 子进程并返回 ' +
           'timed_out=true、partial=true,stdout/stderr 为已捕获的部分输出',
+      },
+      {
+        text:
+          '本通道是 spawn-等退出模型:只能在超时后拿到一次部分输出,拿不到逐轮增量;' +
+          '想要多轮效果请改用一次性的 test/coverage 子命令重复调用',
       },
     ],
   },
