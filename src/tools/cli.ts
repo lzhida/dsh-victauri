@@ -19,6 +19,28 @@ const TOOL_TIMEOUT_MS = 300_000;
 /** 输出被截断时由 runVictauriCli 追加的标记。 */
 const TRUNCATION_MARKER = '[truncated]';
 
+/** CLI 输出预览：头部保留的字符数。 */
+export const PREVIEW_HEAD_CHARS = 3000;
+/** CLI 输出预览：尾部保留的字符数。 */
+export const PREVIEW_TAIL_CHARS = 3000;
+/** CLI 输出预览总上限（与 standalone/render.ts 的 RENDER_MAX_CHARS 对齐）。 */
+export const PREVIEW_MAX_CHARS = 6000;
+
+/**
+ * CLI 输出预览截断：头尾双保留 + 省略标记。
+ *
+ * 只留头部会把尾部丢掉（真实报错往往在最后一行），故保留头尾各 3000 字符，
+ * 中间用省略标记 + 省略字符数说明；按码点（Array.from）切片，避免切碎多字节字符。
+ */
+export function renderPreview(text: string): string {
+  const chars = Array.from(text);
+  if (chars.length <= PREVIEW_MAX_CHARS) return text;
+  const head = chars.slice(0, PREVIEW_HEAD_CHARS).join('');
+  const tail = chars.slice(chars.length - PREVIEW_TAIL_CHARS).join('');
+  const omitted = chars.length - PREVIEW_HEAD_CHARS - PREVIEW_TAIL_CHARS;
+  return `${head}\n…(截断,省略中间 ${omitted} 字符,共 ${chars.length} 字符)\n${tail}`;
+}
+
 /** victauri_cli 工具工厂选项（cliPath / version / 依赖注入,均不暴露给模型）。 */
 export interface VictauriCliToolOptions {
   /** victauri 可执行文件路径;默认按平台解析。 */
@@ -245,7 +267,7 @@ export function createVictauriCliTool(options: VictauriCliToolOptions = {}) {
             blocks.push({ type: 'text', text: lines.join('\n') });
           }
         }
-        const preview = (value.stderr || value.stdout).slice(0, 2000);
+        const preview = renderPreview(value.stderr || value.stdout);
         if (preview) {
           blocks.push({ type: 'text', text: preview });
         }

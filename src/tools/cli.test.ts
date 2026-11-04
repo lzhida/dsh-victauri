@@ -8,7 +8,19 @@ import {
   validateJsonSchemaValue,
 } from '@deepseek-ai/dsh-tools';
 
-import { createVictauriCliTool, victauriCliTool } from './cli.ts';
+import {
+  createVictauriCliTool,
+  PREVIEW_MAX_CHARS,
+  renderPreview,
+  victauriCliTool,
+} from './cli.ts';
+
+/** 把 render 产出的 ContentBlock[] 拼成纯文本（便于断言）。 */
+function renderText(blocks: unknown[]): string {
+  return blocks
+    .map((block) => (block as { text?: string }).text ?? '')
+    .join('\n');
+}
 
 /** ToolDefinition.execute 返回 unknown(运行时接口),断言回具体形状。 */
 interface CliToolValue {
@@ -231,6 +243,49 @@ describe('dsh-victauri victauri_cli tool', () => {
       {} as never,
     )) as CliToolValue;
     expect(result.doctor).toBeNull();
+  });
+
+  it('长输出预览:头尾双保留 + 省略标记(>6000 字符)', async () => {
+    const headMark = 'HEAD_MARKER_';
+    const tailMark = '_TAIL_MARKER';
+    const longStdout = headMark + 'x'.repeat(8000) + tailMark;
+    const longTool = createVictauriCliTool({
+      version: '0.8.8',
+      run: fakeRun({
+        exitCode: 0,
+        stdout: longStdout,
+        stderr: '',
+        timedOut: false,
+      }),
+    });
+    const value = (await longTool.execute(
+      { action: 'doctor', args: [] },
+      {} as never,
+    )) as CliToolValue;
+    const rendered = renderText(longTool.output.render({}, value as never));
+    // 头尾都出现（尾部的真实报错不再被丢掉）
+    expect(rendered).toContain(headMark);
+    expect(rendered).toContain(tailMark);
+    // 中间省略标记 + 省略字符数
+    expect(rendered).toMatch(/截断,省略中间 \d+ 字符,共 \d+ 字符/);
+    // 渲染总长可控（预览上限 6000 + 首行摘要 + 标记）
+    expect(rendered.length).toBeLessThan(7000);
+  });
+
+  it('短输出预览原样保留、不加省略标记', () => {
+    const short = 'a'.repeat(100);
+    expect(renderPreview(short)).toBe(short);
+    expect(renderPreview('a'.repeat(PREVIEW_MAX_CHARS))).not.toContain('截断');
+  });
+
+  it('预览按码点切片:多字节字符不被切碎', () => {
+    // 头切点落在 emoji 中间（码点 2999/3000 附近）
+    const text = 'x'.repeat(2998) + '😀😀😀' + 'y'.repeat(4000);
+    const preview = renderPreview(text);
+    expect(preview).not.toContain('\uFFFD');
+    expect(
+      Array.from(preview).every((ch) => ch.codePointAt(0) !== 0xd83d),
+    ).toBe(true);
   });
 
   it('watch 超时:timed_out=true + partial=true + 保留已捕获的部分输出', async () => {
