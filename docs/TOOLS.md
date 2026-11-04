@@ -92,6 +92,11 @@ Rust `AnimationParams` 在 0.8.8 / 0.10.2 均无该字段）。
   （多帧多文件）、`victauri_animation` `action=scrub` + `capture=true`
   （帧落盘，filmstrip/manifest 元数据合并回结果）；standalone 与 compound
   两个批共用同一通道（识别逻辑在 `src/tools/standalone/image.ts`）。
+- `backend_logs` 大载荷同理：`victauri_invoke_command` `with_logs=true` 或
+  `victauri_logs` `action=backend` 返回超过 5 条日志时，渲染层先把
+  `backend_logs` 摘要化（保留前 5 条 + 一行摘要说明），游标类标量键
+  （`backend_log_cursor` / `next_seq` / `backend_logs_hint`）重排在前**原样保留**，
+  不受 6000 截断影响（摘要逻辑在 `src/tools/standalone/render.ts`）。
 - 返回形状：单图 `{path, mime_type, bytes}`；多帧返回 `paths[]` +
   `mime_type`（首图）+ `count`；`scrub` 的 meta JSON 字段原地合并
   （`filmstrip.manifest[]`、`curve[]` 等照常可读）。

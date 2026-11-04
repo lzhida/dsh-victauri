@@ -188,6 +188,39 @@ describe('dsh-victauri standalone 批', () => {
     expect(text.length).toBeLessThan(RENDER_MAX_CHARS + 100);
   });
 
+  it('with_logs 载荷超长时摘要化 backend_logs 并保留 backend_log_cursor（S-3 回归）', () => {
+    // 复刻 invoke_command {with_logs:true} 的 0.10.3 五键返回体：cursor 排在
+    // backend_logs 之后，旧行为（截头 6000）会把游标丢掉——三段式第②步拿不到它。
+    const payload = {
+      result: { ok: true },
+      backend_logs: Array.from({ length: 120 }, (_, i) => ({
+        seq: i,
+        level: 'info',
+        target: 'app::module',
+        fields: { run_type: 'foreground' },
+        message: 'x'.repeat(150),
+      })),
+      backend_logs_hint: '…',
+      backend_log_cursor: 42,
+      next_seq: 43,
+    };
+    const [block] = renderJson(payload) as Array<{ text: string }>;
+    // 游标与序列必须原样保留（三段式第②步的 since_seq 来源）
+    expect(block.text).toContain('"backend_log_cursor": 42');
+    expect(block.text).toContain('"next_seq": 43');
+    // 摘要标记可见，且不再是 120 条全文
+    expect(block.text).toContain('已摘要化');
+    expect(block.text).not.toContain('"seq": 119');
+    // 短载荷（≤5 条）不被摘要化，保持原样
+    const small = renderJson({
+      result: {},
+      backend_logs: [{ seq: 0 }],
+      backend_log_cursor: 1,
+    }) as Array<{ text: string }>;
+    expect(small[0].text).toContain('"seq": 0');
+    expect(small[0].text).not.toContain('已摘要化');
+  });
+
   it('CLI_ACTIONS 与 standalone 目录无工具名冲突(命名空间分离)', () => {
     const standalone = new Set(REST_TOOL_SPECS.map((spec) => spec.name));
     for (const action of CLI_ACTIONS.filter((a) => isCliAction(a))) {
