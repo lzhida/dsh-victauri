@@ -34,30 +34,30 @@ describe('dsh-victauri', () => {
     expect(inject).toEqual(['tools']);
   });
 
-  it('TOTAL_TOOL_COUNT 与 20+15+1+1 口径一致', () => {
+  it('TOTAL_TOOL_COUNT 与 20+15+1+1+1 口径一致', () => {
     expect(TOTAL_TOOL_COUNT).toBe(
-      REST_TOOL_SPECS.length + COMPOUND_TOOL_SPECS.length + 2,
+      REST_TOOL_SPECS.length + COMPOUND_TOOL_SPECS.length + 3,
     );
-    expect(TOTAL_TOOL_COUNT).toBe(37);
+    expect(TOTAL_TOOL_COUNT).toBe(38);
   });
 
-  it('apply 注册全量 37 工具并打印装载日志', () => {
+  it('apply 注册全量 38 工具并打印装载日志', () => {
     const ctx = stubCtx();
     vi.spyOn(console, 'log').mockImplementation((msg: string) => {
       ctx.log.push(msg);
     });
     apply(ctx as never);
-    expect(ctx.tools.register).toHaveBeenCalledTimes(37);
+    expect(ctx.tools.register).toHaveBeenCalledTimes(38);
     expect(
       ctx.log.some((line) => line.startsWith(`[${name}] plugin loaded`)),
     ).toBe(true);
     expect(
-      ctx.log.some((line) => line.includes('registered 37 victauri tools')),
+      ctx.log.some((line) => line.includes('registered 38 victauri tools')),
     ).toBe(true);
     const names = ctx.tools.register.mock.calls.map(
       (call) => (call[0] as { name: string }).name,
     );
-    expect(new Set(names).size).toBe(37);
+    expect(new Set(names).size).toBe(38);
     expect(names).toContain('victauri_cli');
     expect(names).toContain('victauri_cli_status');
     expect(names).toContain('victauri_eval_js');
@@ -70,7 +70,7 @@ describe('dsh-victauri', () => {
       ctx.log.push(msg);
     });
     apply(ctx as never, { disabledTools: ['victauri_trace', 'victauri_cli'] });
-    expect(ctx.tools.register).toHaveBeenCalledTimes(35);
+    expect(ctx.tools.register).toHaveBeenCalledTimes(36);
     const names = ctx.tools.register.mock.calls.map(
       (call) => (call[0] as { name: string }).name,
     );
@@ -81,12 +81,12 @@ describe('dsh-victauri', () => {
     ).toBe(true);
   });
 
-  it('非法配置降级默认（工具照常注册 37）', () => {
+  it('非法配置降级默认（工具照常注册 38）', () => {
     const ctx = stubCtx();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     apply(ctx as never, { requestTimeoutMs: 'not-a-number' });
-    expect(ctx.tools.register).toHaveBeenCalledTimes(37);
+    expect(ctx.tools.register).toHaveBeenCalledTimes(38);
     expect(logSpy).toHaveBeenCalled();
   });
 });

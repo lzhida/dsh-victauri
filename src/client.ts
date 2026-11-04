@@ -40,7 +40,16 @@ export class VictauriClient {
     });
   }
 
-  /** 无认证 liveness 探活:端口上有 victauri 服务即 true(不验证 token)。 */
+  /**
+   * 无认证 liveness 探活:端口上有 victauri 服务即 true(不验证 token)。
+   *
+   * 接线决策:**不接入插件工具面**(有意为之,非悬空项)。理由——
+   * ① 连接建立路径(`connectAuto` → `info()`)已做带认证探活,失败以
+   *    `no-instance` / `no-live-instance` 结构化错误返回,比布尔更可诊断;
+   * ② `victauri_tools_list` 调用成功本身即证明服务在线,再暴露一个探针只会
+   *    多一次往返与一个工具位;
+   * ③ 保留为 client 公开 API(单测覆盖),供外部调用方按需使用。
+   */
   async health(): Promise<boolean> {
     try {
       const response = await this.request('/health', 'GET');

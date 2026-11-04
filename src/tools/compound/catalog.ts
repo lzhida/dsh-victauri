@@ -11,7 +11,8 @@
  * ParameterSchemaSpec 顶层即属性映射（implicit open object root），
  * required 是 per-property `required: true` 注解。
  *
- * 工具数口径：Victauri 全量 35（standalone 20 + compound 15）+ CLI 桥 1 + CLI 探测 1 = 37 个 dsh 工具；
+ * 工具数口径：Victauri 全量 35（standalone 20 + compound 15）+ CLI 桥 1 + CLI 探测 1
+ * + 工具发现 1 = 38 个 dsh 工具；
  * 本文件 15 = README「工具清单」compound 行 = docs/TOOLS.md = 契约测试（常量推导）。
  */
 import type { ParameterPropertySpec } from '@deepseek-ai/dsh-tools';
