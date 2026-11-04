@@ -1,0 +1,21 @@
+# yamllint 配置（本地校验 GitHub Actions workflow 用）
+#
+# 规则放宽原因：
+# - truthy / check-keys: false —— GitHub Actions 的 `on:` 键在 YAML 1.1
+#   解析下会被当作布尔值，属误报（`"on":` 加引号虽可规避，但保持官方
+#   写法更稳）；
+# - document-start: disable —— 允许不带 `---` 起始标记；
+# - comments-indentation: disable —— 允许注释与内容同列缩进；
+# - line-length: max 120 —— workflow 的 `if:` 表达式与中文注释偏长。
+#
+# 用法（仓库根目录）：
+#   python -m yamllint .github/workflows/
+extends: default
+
+rules:
+  line-length:
+    max: 120
+  truthy:
+    check-keys: false
+  document-start: disable
+  comments-indentation: disable

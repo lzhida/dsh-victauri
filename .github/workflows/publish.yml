@@ -1,0 +1,101 @@
+---
+# 发布流水线（**草案**）
+#
+# ⚠️ 本文件是草案：仓库当前**未启用任何发布**——分支只有 `dev`（无
+#    `main`）、`NPM_TOKEN` 未配置、版本号未打 tag。启用前请照
+#    `docs/release.md` 逐项确认。
+#
+# 触发方式：
+# 1. **tag 推送（`v*`）** → 全门禁 + 正式 `npm publish`（发布主路径）；
+# 2. **手动 workflow_dispatch** → 默认 `dry_run=true`（只跑门禁与打包
+#    校验，不发布），确认无误后再手动跑一次 `dry_run=false`。
+#
+# 版本一致性：tag 名（`v1.2.3`）必须与 `package.json` 的 `version`
+# （`1.2.3`）一致，不一致直接失败——避免发出与 tag 对不上的包。
+#
+# 门禁与 `.github/workflows/ci.yml` 同序：format:check → lint →
+# typecheck → test → build。
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只跑门禁与打包校验，不实际发布（true=不发布）'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # environment 需在仓库 Settings → Environments 预建
+    # （docs/release.md 第 3 步）；可给该 environment 配置 required
+    # reviewers，把「谁能发版」变成仓库级策略。
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.10.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm format:check
+
+      - run: pnpm lint
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+      # 显式 build 把构建失败提前到门禁阶段暴露；`npm publish` 会再触发
+      # `prepack` → build（package.json 已配 `prepare` & `prepack`），
+      # 二者不冲突。
+      - run: pnpm build
+
+      - name: 校验 tag 与 package.json 版本一致
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "版本不一致：tag=$TAG package.json=$PKG" >&2
+            exit 1
+          fi
+          echo "版本一致：$PKG"
+
+      - name: 打印包内容清单（npm pack --dry-run）
+        run: npm pack --dry-run
+
+      - name: 发布（dry-run，不实际上传）
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.dry_run == true
+        run: npm publish --dry-run --access public
+
+      - name: 发布（正式上传）
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' &&
+          inputs.dry_run == false)
+        run: npm publish --access public
+        env:
+          # secrets 不在本仓库配置；由仓库管理员在 Settings → Secrets
+          # 写入（docs/release.md 第 3 步）。占位引用，未配置时该步骤
+          # 直接失败而不是静默跳过。
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
