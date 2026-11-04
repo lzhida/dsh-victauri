@@ -342,7 +342,8 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     title: '窗口截图',
     description:
       '把 Tauri 窗口截成 PNG(Windows PrintWindow/macOS CGWindowList/Linux X11;纯 Wayland 失败回退整屏)。' +
-      '本插件把返回的 base64 落盘 %TEMP%\\dsh-victauri\\ 并返回文件路径(不占上下文)。' +
+      '本插件把返回的 base64 落盘 %TEMP%\\dsh-victauri\\ 并返回文件路径(不占上下文),' +
+      '查看用 read_image 读该路径,展示给用户用 present 出卡。' +
       '隐藏窗口截图会报错,先 show 再截。schema 来源：[文档] + [实测 0.8.8 keys=data,mimeType,type]。',
     parameters: {
       window_label: STR('目标窗口标签;缺省截主/第一个可见窗口 [文档]'),

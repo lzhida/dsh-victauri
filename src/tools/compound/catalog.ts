@@ -89,7 +89,9 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
     description:
       '动画检查（无 CDP，读 Web Animations API）：list 列运行中 CSS 动画（timing/keyframes/进度）；' +
       'scrub 确定性暂停并 seek 到 points 个等分进度点，返回几何曲线（rect+transform+opacity），' +
-      'capture=true 另返回 contact-sheet filmstrip；sample 实时录制 rAF 曲线（record=true 布防、false 收读，' +
+      'capture=true 另返回 contact-sheet filmstrip（帧图同样落盘 ' +
+      '%TEMP%\\dsh-victauri\\，查看用 read_image，展示给用户用 present）；' +
+      'sample 实时录制 rAF 曲线（record=true 布防、false 收读，' +
       '含丢帧统计）；clear 清空录制。仅 CSS 动画可 seek（JS/rAF 用 sample）。' +
       '注意：动画仅在运行/挂起时可见——先触发动画再调用。 [桥]',
     parameters: {
@@ -483,7 +485,9 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       '视觉轨迹（无 CDP）：start 按固定间隔截窗进环形缓冲，形成视觉时间线；' +
       'with_events=true 同时启动事件录制器（捆绑 IPC/DOM/console 事件时间线）。' +
       'stop 停止并返回摘要（帧数/时长/时间戳）；status 查询活跃与缓冲帧数；' +
-      'frames 取已捕获帧（base64 PNG，limit 限制数量，0/省略 = 全部）。 [桥]',
+      'frames 取已捕获帧（base64 PNG，limit 限制数量，0/省略 = 全部）——' +
+      '本插件把帧图像落盘 %TEMP%\\dsh-victauri\\ 返回文件路径，' +
+      '查看用 read_image，展示给用户用 present。 [桥]',
     parameters: {
       action: ACTION('trace', ['start', 'stop', 'status', 'frames']),
       interval_ms: NUM('(start) 截屏间隔毫秒，默认 500，最小 50'),

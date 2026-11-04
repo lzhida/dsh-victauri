@@ -6,8 +6,9 @@
  * + 1 CLI 桥 + 1 CLI 探测 + 1 工具发现（口径见 docs/TOOLS.md 与
  * src/tools/contract.test.ts）。
  *
- * 依赖注入：tools（工具注册表）。连接惰性建立——首次工具调用才 discovery
- * 探活，Tauri app 未启动不影响插件装载。
+ * 依赖注入：tools（工具注册表）+ skills（宿主 skill 注册表，注册内嵌
+ * victauri-fullstack-debug 调试套路）。连接惰性建立——首次工具调用才
+ * discovery 探活，Tauri app 未启动不影响插件装载。
  */
 
 import type { Context } from '@deepseek-ai/cordis';
@@ -17,6 +18,11 @@ import { connectAuto, VictauriClient } from './client.ts';
 import { resolveConfig, type ResolvedVictauriConfig } from './config.ts';
 import { scanInstances } from './discovery.ts';
 import { VictauriError } from './errors.ts';
+import {
+  SKILL_CONTENT,
+  SKILL_DESCRIPTION,
+  SKILL_NAME,
+} from './skill-content.ts';
 import { createVictauriCliTool } from './tools/cli.ts';
 import { createVictauriCliStatusTool } from './tools/cli-status.ts';
 import { createToolsListTool } from './tools/tools-list.ts';
@@ -32,8 +38,8 @@ import {
 /** Cordis 插件名（loader 依赖）；与包名 kebab 段、patch 行 id 一致。 */
 export const name = 'dsh-victauri';
 
-/** 依赖注入：工具注册表。 */
-export const inject: string[] = ['tools'];
+/** 依赖注入：工具注册表 + 宿主 skill 注册表。 */
+export const inject: string[] = ['tools', 'skills'];
 
 /** 全量工具数（20 standalone + 15 compound + 1 CLI 桥 + 1 CLI 探测 + 1 工具发现）。 */
 export const TOTAL_TOOL_COUNT =
@@ -123,6 +129,16 @@ export function apply(ctx: Context, configInput?: unknown): void {
     `[${name}] registered ${enabledTools.length} victauri tools` +
       (disabled.size > 0 ? ` (${disabled.size} disabled by config)` : ''),
   );
+
+  // 5. 注册内嵌 skill（e2e 契约行已打完，日志另起一行不破坏其格式）。
+  ctx.skills.register({
+    name: SKILL_NAME,
+    description: SKILL_DESCRIPTION,
+    source: 'bundled',
+    content: SKILL_CONTENT,
+    invocation: { modelInvocable: true, userInvocable: true },
+  });
+  console.log(`[${name}] registered skill ${SKILL_NAME}`);
 }
 
 // re-export：loader 通过 `plugin.Config` 读 schemastery schema 生成设置面板

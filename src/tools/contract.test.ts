@@ -225,6 +225,23 @@ describe('dsh-victauri 工具面契约', () => {
     expect(trace!.parameters).toHaveProperty('limit');
   });
 
+  it('图像类工具描述告知落盘与查看方式（批七 1/1：read_image/present）', () => {
+    const screenshot = REST_TOOL_SPECS.find((s) => s.name === 'screenshot');
+    const animation = COMPOUND_TOOL_SPECS.find((s) => s.name === 'animation');
+    const trace = COMPOUND_TOOL_SPECS.find((s) => s.name === 'trace');
+    for (const spec of [screenshot, animation, trace]) {
+      expect(spec!.description, `${spec!.name} 落盘路径`).toContain(
+        '%TEMP%\\dsh-victauri\\',
+      );
+      expect(spec!.description, `${spec!.name} read_image 提示`).toContain(
+        'read_image',
+      );
+      expect(spec!.description, `${spec!.name} present 提示`).toContain(
+        'present',
+      );
+    }
+  });
+
   it('standalone 0.10.3 对齐:invoke_command/wait_for/find_elements 新增参数齐备、可选且带来源标注', () => {
     const specOf = (name: string) =>
       REST_TOOL_SPECS.find((spec) => spec.name === name)!;
