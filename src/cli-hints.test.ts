@@ -87,34 +87,24 @@ describe('dsh-victauri cli 子命令口径与版本感知提示', () => {
     expect(actionEnumOfTool()).toEqual([...CLI_ACTIONS]);
   });
 
-  it('0.8.8 下 hints 不提示 doctor 的 --json(实测 0.8.8 不支持该选项)', () => {
-    const hints = buildActionHints('0.8.8');
-    expect(hints.doctor.notes.join(' ')).not.toContain('--json');
-    expect(hints.doctor.notes.join(' ')).not.toContain('JSON');
-    expect(JSON.stringify(hints)).not.toContain('--json');
-  });
-
-  it('0.10.0 起 hints 提示 doctor 支持 --json', () => {
-    const hints = buildActionHints('0.10.0');
-    expect(hints.doctor.notes.join(' ')).toContain('--json');
+  it('doctor hints 明示不提供 --json(0.8.8 实测 + 0.10.3 源码双证,D-5 口径)', () => {
+    for (const version of ['0.8.8', '0.10.0', '0.10.3', null] as const) {
+      const hints = buildActionHints(version);
+      const notes = hints.doctor.notes.join(' ');
+      expect(notes, String(version)).toContain('不提供 --json');
+      expect(notes, String(version)).toContain('doctor 字段');
+    }
+    // 旧的不实口径不得残留
+    const all = JSON.stringify(buildActionHints('0.10.3'));
+    expect(all).not.toContain('0.10.0 起的文档才提供');
   });
 
   it('版本未知时不外推任何版本门控文本', () => {
     const hints = buildActionHints(null);
-    expect(hints.doctor.notes).toEqual([]);
-    expect(JSON.stringify(hints)).not.toContain('--json');
-  });
-
-  it('版本门控按数值段比较:0.10.0 命中 ≥0.10.0 的提示', () => {
-    expect(buildActionHint('doctor', '0.9.9').notes.join(' ')).not.toContain(
-      '--json',
-    );
-    expect(buildActionHint('doctor', '0.10.0').notes.join(' ')).toContain(
-      '--json',
-    );
-    expect(buildActionHint('doctor', '0.10.1').notes.join(' ')).toContain(
-      '--json',
-    );
+    const all = JSON.stringify(hints);
+    // 无门控 note(doctor 口径)可以出现,但版本门控句不得出现
+    expect(all).not.toContain('需 >=');
+    expect(all).not.toContain('不支持该子命令');
   });
 
   it('watch/bridge 标注长驻 + 非交互 + 需配合 timeout_ms', () => {

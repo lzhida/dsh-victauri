@@ -343,7 +343,7 @@ describe('dsh-victauri victauri_cli tool', () => {
     }
   }, 30_000);
 
-  it('hints 按探测到的版本生成:0.8.8 无 --json,0.10.0 有 --json', async () => {
+  it('hints 按探测到的版本生成:doctor 恒定提示不提供 --json(D-5 口径)', async () => {
     const oldTool = createVictauriCliTool({
       version: '0.8.8',
       run: fakeRun({
@@ -358,8 +358,9 @@ describe('dsh-victauri victauri_cli tool', () => {
       {} as never,
     )) as CliToolValue;
     expect(oldResult.cli_version).toBe('0.8.8');
-    expect(oldResult.hints.notes.join(' ')).not.toContain('--json');
-    expect(JSON.stringify(oldResult.hints)).not.toContain('--json');
+    // doctor 的 --json 是不存在的选项(0.8.8 实测报 unexpected argument,
+    // 0.10.3 源码亦无),该提示无版本门控、任何版本下恒定出现。
+    expect(oldResult.hints.notes.join(' ')).toContain('不提供 --json');
 
     const newTool = createVictauriCliTool({
       version: '0.10.0',
@@ -375,7 +376,11 @@ describe('dsh-victauri victauri_cli tool', () => {
       {} as never,
     )) as CliToolValue;
     expect(newResult.cli_version).toBe('0.10.0');
-    expect(newResult.hints.notes.join(' ')).toContain('--json');
+    expect(newResult.hints.notes.join(' ')).toContain('不提供 --json');
+    // 旧的不实口径不得残留
+    expect(JSON.stringify(newResult.hints)).not.toContain(
+      '0.10.0 起的文档才提供',
+    );
   });
 
   it('版本探测走注入的 probeVersion(生产默认走 victauri_cli_status)', async () => {

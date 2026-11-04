@@ -6,9 +6,10 @@
  *   手写清单，新增子命令必须改两处，enum 与提示容易漂移；
  * - 现在 `CLI_ACTION_SPECS` 是唯一来源：新增子命令只加一项，
  *   工具参数 enum、动作提示、版本门控说明同步生效（一致性由单测守护）；
- * - 提示按**探测到的 CLI 版本**门控：0.8.8 实测 `doctor` 不接受 `--json`
- *   （报 `error: unexpected argument '--json' found`），而 0.10 起的文档才有该
- *   选项，版本未知时一律不给版本门控文本（保守不外推）。
+ * - 提示按**探测到的 CLI 版本**门控：版本专属选项只对满足门槛的版本出现
+ *   （如 tools/call 的 `--json` 需 ≥0.10.1），版本未知时一律不给版本门控文本
+ *   （保守不外推）。`doctor` 的 `--json` 属**不存在的选项**（0.8.8 实测报
+ *   unexpected argument，0.10.3 源码亦无），口径为无门控的恒定提示。
  */
 
 import { isAtLeast, isBelow } from './cli-version.ts';
@@ -81,16 +82,12 @@ const SPEC_TABLE = {
     summary: '诊断 CLI/服务/发现链路健康状态',
     notes: [
       {
+        // D-5 口径修正:上游 v0.10.3 main.rs 的 doctor 子命令只有 AppTarget(--app),
+        // 未见 --json;0.8.8 实测报 unexpected argument。旧文案「0.10.0 起的文档才
+        // 提供」与上游源码不符,已废弃。该 note 无版本门控(任何版本下都成立)。
         text:
-          'doctor 在 0.10.0 之前仅输出文本报告,结构化明细以本工具输出的 doctor 字段为准' +
-          '(CLI 侧结构化输出选项自 0.10.0 起的文档才提供)',
-        until: '0.10.0',
-      },
-      {
-        text:
-          'doctor 支持 CLI 侧结构化输出选项 --json(0.10.0 起的文档提供;0.8.8 实测不支持,' +
-          '会报 unexpected argument)',
-        since: '0.10.0',
+          'doctor 不提供 --json 结构化输出:0.8.8 实测报 unexpected argument,' +
+          '上游 0.10.3 CLI 源码亦未见该选项;结构化明细以本工具输出的 doctor 字段为准',
       },
     ],
   },

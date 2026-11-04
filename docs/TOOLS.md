@@ -339,9 +339,10 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 
 - `hints.notes` 按**探测到的 CLI 版本**过滤；版本未知（`cli_version=null`）时
   一律不给版本门控文本（保守不外推）；
-- 例：0.8.8 实测 `doctor` 不接受 `--json`（报 `error: unexpected argument
-'--json' found`），因此 0.8.8 下的提示只说明「CLI 侧结构化输出选项需 0.10.0
-  起才提供」，不建议使用该选项；0.10.0 起才提示该选项可用。
+- `doctor` 是例外口径：上游 CLI **不提供** `--json` 结构化输出（0.8.8 实测报
+  `error: unexpected argument '--json' found`；v0.10.3 CLI 源码 `main.rs` 的
+  doctor 子命令亦无该选项），该提示无版本门控、任何版本下恒定出现——
+  doctor 的结构化明细以本工具输出的 `doctor` 字段为准。
 
 ### cwd 用法
 
