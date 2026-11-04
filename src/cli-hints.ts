@@ -80,15 +80,16 @@ const SPEC_TABLE = {
   },
   watch: {
     summary:
-      '监视测试目录变化并重跑 cargo test(-d/--dir 默认 tests,-f/--filter 只跑匹配用例)',
+      '监视测试目录变化(仅 .rs 文件触发)并重跑 cargo test(-d/--dir 默认 tests,-f/--filter 只跑匹配用例)',
     longRunning: true,
     interactive: false,
     notes: [
       {
         text:
-          '上游 watch 语义=监视测试目录的文件变化并重跑 cargo test:' +
-          '-d/--dir 指定被监视目录(默认 tests),-f/--filter 只跑匹配的测试;' +
-          '需在含 Cargo.toml 的 Rust 测试工程里执行,否则上游报找不到 Cargo.toml',
+          '上游 watch 语义=递归监视测试目录的文件变化(仅 .rs 变化触发,启动即先跑一轮)' +
+          '并重跑 cargo test:-d/--dir 指定被监视目录(默认 tests),-f/--filter 只跑匹配的测试;' +
+          '目录须落在含 Cargo.toml 的 Rust 测试工程里(用 cwd 指定工程根);' +
+          '目录不存在时上游自身报 watch directory does not exist',
       },
       {
         text:
@@ -103,7 +104,9 @@ const SPEC_TABLE = {
       {
         text:
           '本通道是 spawn-等退出模型:只能在超时后拿到一次部分输出,拿不到逐轮增量;' +
-          '想要多轮效果请改用一次性的 test/coverage 子命令重复调用',
+          '多轮效果≈重复执行项目自身的 cargo test(用 cwd 指定工程根);' +
+          'test/coverage 是跑在活体 app 上的另一套(内置冒烟套件/IPC 覆盖报告),' +
+          '不能替代 watch 的重跑',
       },
     ],
   },
@@ -119,7 +122,8 @@ const SPEC_TABLE = {
       {
         text:
           '上游定位:给只会说 stdio 的第三方 MCP 宿主用的 stdio→HTTP 代理' +
-          '(Claude Code 等);上游 CLI 不提供 --http/--port 等服务端选项,' +
+          '(Claude Code 等;本机 0.8.8 实测 bridge --help 首行,0.10.x 文档同口径);' +
+          '上游 CLI 不提供 --http/--port 等服务端选项,' +
           'HTTP/MCP 端点实际运行在 victauri app 进程内(/mcp、/api/tools、' +
           '/info、/health)',
       },
@@ -132,13 +136,16 @@ const SPEC_TABLE = {
       {
         text:
           '长驻子命令:不会自行退出,必须传 timeout_ms;超时会 kill 子进程并返回 ' +
-          'timed_out=true、partial=true,stdout/stderr 为超时前已捕获的部分输出',
+          'timed_out=true、partial=true,stdout/stderr 为超时前已捕获的部分输出;' +
+          'partial 还有第二个来源:单路输出超 512KB 捕获上限(软上限)会被追加 ' +
+          '[truncated] 标记,partial 按该字面量判定(命令自身打印同名文本会假阳性)',
       },
       {
         text:
           'bridge 是 stdio MCP 代理,本通道(spawn-等退出模型)只能等它退出,' +
-          '拿不到 stdio 交互会话;跨 app 重启自动重连、会话保持等能力只存在于' +
-          '上游 CLI 侧的长驻 bridge 进程,本通道没有',
+          '拿不到 stdio 交互会话;跨 app 重启自动重发现并重建后端会话的能力' +
+          '只存在于上游 CLI 侧的长驻 bridge 进程,本通道没有' +
+          '(上游 app 侧会话 id 随 app 重启即失效)',
       },
     ],
   },
@@ -244,6 +251,9 @@ export function buildCliToolDescription(version: string | null): string {
     'doctor 需在 Tauri 项目根(含 Cargo.toml)执行,否则报告全 FAIL;用 cwd 指定项目根。',
     '长驻子命令(watch/bridge)不会自行退出,必须传 timeout_ms;超时会 kill 子进程,' +
       '返回 timed_out=true、partial=true,stdout/stderr 为已捕获的部分输出。',
+    'partial 还有第二个来源:单路输出超 512KB 捕获上限(软上限)会追加 [truncated] 标记,' +
+      'partial 按该字面量判定;模型侧预览再按头 3000+尾 3000 截断(另含一行省略标记),' +
+      '截断前的完整输出仍在返回字段里。',
     '输出含 cli_version(探测到的 CLI 版本)与 hints(该子命令的版本感知提示)。',
   ].join(' ');
 }

@@ -188,9 +188,10 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 
 ### 渲染预览（模型侧可见文本）
 
-- 返回字段里的 `stdout` / `stderr` 是**全文**；模型实际看到的**预览文本**按
-  **头尾双保留** 截断：总上限 **6000 字符**（与 `renderJson` 同口径），
-  头 3000 + 尾 3000，中间插入 `…(截断,省略中间 N 字符,共 M 字符)` 标记；
+- 返回字段里的 `stdout` / `stderr` 是**未经预览截断的捕获输出**（单路另有
+  512KB 捕获上限，超出会带 `[truncated]` 标记，见下文「长驻子命令」）；模型
+  实际看到的**预览文本**按**头尾双保留**截断：**头 3000 + 尾 3000**（另含一行
+  省略标记 `…(截断,省略中间 N 字符,共 M 字符)`，故渲染总长略大于 6000）；
 - 只留头部会把尾部丢掉（真实报错常在最后几行），故必须保留尾部；
 - 按**码点**切片（`Array.from`），多字节字符不会被切碎；
 - 预览取 `stderr || stdout`（stderr 非空时优先 stderr）；`doctor` 的结构化
@@ -218,18 +219,20 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 - 超时会 kill 子进程，返回 `timed_out=true`、`partial=true`，`stdout` /
   `stderr` 是**超时前已捕获的部分输出**（不是完整结果，也不会续传）；
 - `partial=true` 有两个来源：① 超时强杀（`timed_out=true`）；② 单路输出超过
-  512KB 捕获上限（`src/cli.ts` 的 `MAX_STREAM_BYTES`），被截断的那一路末尾
-  追加 `[truncated]` 标记；
+  512KB 捕获上限（`src/cli.ts` 的 `MAX_STREAM_BYTES`，**软上限**：先判后加，
+  实际可略超一个 chunk），被截断的那一路末尾追加 `[truncated]` 标记。
+  注意 partial 是按**输出里是否出现 `[truncated]` 字面量**判定的，若子命令自身
+  打印了同名文本会假阳性；
 - 模型侧可见文本再叠一层**预览截断**：取 `stderr || stdout`，头 3000 + 尾
-  3000、总上限 6000 字符（详见上文「渲染预览」）；全文仍在返回字段里；
+  3000（另含一行省略标记，故渲染总长略大于 6000，详见上文「渲染预览」）；
 - 两者都标记 `interactive=false`：本通道是 **spawn-等退出模型**（不写 stdin、
   等进程退出才返回），拿不到任何交互会话。
 
 ### bridge 子命令（上游定位与本通道边界）
 
 - **上游定位**：`victauri bridge` 是给只会说 stdio 的**第三方 MCP 宿主**用的
-  stdio→HTTP 代理（上游文档原话 "Run as a stdio-to-HTTP MCP bridge for
-  Claude Code and other MCP hosts"）；
+  stdio→HTTP 代理（本机 0.8.8 `bridge --help` 首行原话 "Run as a stdio-to-HTTP
+  MCP bridge for Claude Code and other MCP hosts"）；
 - **HTTP 端点不在 CLI 进程里**：上游 CLI 无 `--http` / `--port` /
   `--transport` 等服务端选项；`/mcp`、`/api/tools`、`/info`、`/health`
   端点实际运行在 **victauri app 进程内**（插件随 app 启动的内嵌 HTTP 服务）；
@@ -238,11 +241,13 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
   工具（即全部 `victauri_*` 工具）——工具调用走主通道即可，`bridge` 对本
   插件零增量；
 - **仅诊断性短时使用**：本通道（spawn-等退出模型）拿不到 stdio 交互会话；
-  跨 app 重启自动重连、会话保持等能力只存在于上游 CLI 侧的**长驻 bridge
-  进程**，本通道没有——`bridge` 在本工具里只适合短时诊断（如确认握手输出）；
-- **证据强度**：上游行为依据 victauri-cli / victauri-plugin 0.10.3 源码与
-  文档（[INFERENCE]，本机未安装 0.10.3；本机 0.8.8 实测 `bridge --help`
-  与已废弃的 `--wait` no-op）。
+  跨 app 重启自动重发现并**重建**后端会话的能力只存在于上游 CLI 侧的**长驻
+  bridge 进程**，本通道没有——`bridge` 在本工具里只适合短时诊断（如确认握手
+  输出）；上游 app 侧会话 id 随 app 重启即失效，不存在"会话跨重启存活"；
+- **证据强度**：上游行为依据 victauri-cli / victauri-plugin **0.10.2 registry
+  源码**与官方文档（[INFERENCE]，本机未安装 0.10.2/0.10.3，仅 cargo registry
+  有 0.10.2 源码可查；本机 0.8.8 实测 `bridge --help` 与已废弃的 `--wait`
+  no-op）。
 
 ### 如何近似 watch 的多轮效果
 
@@ -250,23 +255,32 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
   的效果，二选一：
   1. **反复调用一次性子命令**：`victauri_cli(action='test')` 或
      `victauri_cli(action='coverage')`——两者都是一次性退出型（`coverage`
-     需活体 app，报告走 stderr）；
+     需活体 app；其报告走 stderr 系由上游 0.10.2 源码 `eprintln!` 推断，
+     **本机待实测**）；
   2. **直接走 REST 主通道**：用 `victauri_*` 工具（同一 app、同一套工具、
-     结构化返回，等价且更强）；
-- 上游 `watch` 本身没有 JSON / `--once` / `--follow` 模式（见上文 watch
+     结构化返回；**工具调用面**与 bridge 所代理的同一套工具等价）；
+- **"近似"仅指多轮调用节奏，不是测试能力的等价**：上游 `watch` 重跑的是
+  **应用工程的 `cargo test`**（需在含 `Cargo.toml` 的 Rust 工程里执行），而
+  `victauri test` 跑的是 victauri-test **内置冒烟套件**，两者不是同一套测试；
+  REST 主通道同样无法执行应用工程的 `cargo test`；
+- 上游 `watch` 本身没有 JSON / `--once` / `--follow` 模式（见下文 watch
   小节），本通道也**不存在**逐轮推送或订阅能力——勿按增量流语义调用。
 
 ### watch 子命令（上游语义与本通道边界）
 
-- **上游语义**：监视**测试目录**的文件变化并重跑 `cargo test`
-  （本机 0.8.8 实测 `victauri watch --help` = "Watch test files and re-run on changes"）；
+- **上游语义**：递归监视**测试目录**的 `.rs` 文件变化并重跑 `cargo test`
+  （仅 `.rs` 变化触发，启动即先跑一轮；本机 0.8.8 实测 `victauri watch --help`
+  = "Watch test files and re-run on changes"）；
   选项 `-d/--dir` 指定被监视目录（默认 `tests`）、`-f/--filter` 只跑匹配的测试；
-  需在含 `Cargo.toml` 的 Rust 测试工程里执行，否则上游报找不到 `Cargo.toml`；
+  目录须落在含 `Cargo.toml` 的 Rust 测试工程内（用 `cwd` 指定工程根）；
+  目录不存在时上游自身报 `watch directory does not exist`；
 - **输出形态**：人类向 **ANSI 终端文本**（banner 与摘要走 `stderr`）；上游**不提供
   JSON 结构化输出**，也**没有** `--once`（跑一次即退）/ `--follow`（跟随逐轮）模式；
-- **本通道边界**：插件走 spawn-等退出模型（`src/cli.ts:50-115`），只能在超时后拿到
-  **一次部分输出**，拿不到**逐轮增量**；想要多轮效果，请改用一次性的 `test` /
-  `coverage` 子命令重复调用；
+- **本通道边界**：插件走 spawn-等退出模型（`src/cli.ts` 的 `runCliProcess`），
+  只能在超时后拿到**一次部分输出**，拿不到**逐轮增量**；想要多轮效果，
+  应重复执行**项目自身**的 `cargo test`（用 `cwd` 指定工程根）——
+  `test` / `coverage` 是跑在**活体 app** 上的另一套（victauri 内置冒烟套件 /
+  IPC 覆盖报告），**不能替代** watch 的重跑；
 - **证据强度**：0.8.8 为本机实测；0.10.x 的参数与输出形态以上游源码/文档为准
   （[INFERENCE]，本机未安装 0.10.3）。
 
