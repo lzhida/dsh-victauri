@@ -107,7 +107,9 @@ export function apply(ctx: Context, configInput?: unknown): void {
     ...createStandaloneTools(REST_TOOL_SPECS, { getClient }),
     ...createCompoundTools({ getClient }),
     createVictauriCliTool(config.cliPath ? { cliPath: config.cliPath } : {}),
-    createVictauriCliStatusTool(config.cliPath ? { cliPath: config.cliPath } : {}),
+    createVictauriCliStatusTool(
+      config.cliPath ? { cliPath: config.cliPath } : {},
+    ),
     createToolsListTool({ getClient }),
   ];
   const disabled = new Set(config.disabledTools);

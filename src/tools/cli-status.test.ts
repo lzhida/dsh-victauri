@@ -54,8 +54,10 @@ function fakeChild(options: FakeChildOptions): ChildProcess {
       child.emit('error', options.error);
       return;
     }
-    if (options.stdout !== undefined) stdout.emit('data', Buffer.from(options.stdout));
-    if (options.stderr !== undefined) stderr.emit('data', Buffer.from(options.stderr));
+    if (options.stdout !== undefined)
+      stdout.emit('data', Buffer.from(options.stdout));
+    if (options.stderr !== undefined)
+      stderr.emit('data', Buffer.from(options.stderr));
     child.emit('close', options.exitCode ?? 0);
   });
   return child;
@@ -94,7 +96,10 @@ describe('dsh-victauri victauri_cli_status', () => {
     mockSpawn({ stdout: 'victauri 0.8.8\n' });
 
     const tool = createVictauriCliStatusTool({ cliPath: cli });
-    const value = (await tool.execute({}, {} as never)) as unknown as CliStatusResult;
+    const value = (await tool.execute(
+      {},
+      {} as never,
+    )) as unknown as CliStatusResult;
 
     expect(value.status).toBe('available');
     expect(value.version).toBe('0.8.8');
@@ -111,7 +116,10 @@ describe('dsh-victauri victauri_cli_status', () => {
     mockSpawn({ error: new Error(`spawn ${missing} ENOENT`) });
 
     const tool = createVictauriCliStatusTool({ cliPath: missing });
-    const value = (await tool.execute({}, {} as never)) as unknown as CliStatusResult;
+    const value = (await tool.execute(
+      {},
+      {} as never,
+    )) as unknown as CliStatusResult;
 
     expect(value.status).toBe('not_found');
     expect(value.version).toBeNull();
@@ -131,7 +139,10 @@ describe('dsh-victauri victauri_cli_status', () => {
     mockSpawn({ stdout: 'victauri 0.9.0' });
 
     const tool = createVictauriCliStatusTool({ cliPath: cli });
-    const value = (await tool.execute({}, {} as never)) as unknown as CliStatusResult;
+    const value = (await tool.execute(
+      {},
+      {} as never,
+    )) as unknown as CliStatusResult;
 
     expect(value.source).toBe('config');
     expect(value.requested_path).toBe(cli);
@@ -143,7 +154,8 @@ describe('dsh-victauri victauri_cli_status', () => {
   });
 
   it('未注入 cliPath:按平台默认名在 PATH 中定位(实际命中路径 + platform_default)', async () => {
-    const defaultName = process.platform === 'win32' ? 'victauri.exe' : 'victauri';
+    const defaultName =
+      process.platform === 'win32' ? 'victauri.exe' : 'victauri';
     writeFileSync(join(workDir, defaultName), 'fake-binary');
     mockSpawn({ stdout: 'victauri 0.8.8' });
 
@@ -181,7 +193,10 @@ describe('dsh-victauri victauri_cli_status', () => {
     mockSpawn({ error: new Error('spawn EACCES permission denied') });
 
     const tool = createVictauriCliStatusTool({ cliPath: cli });
-    const value = (await tool.execute({}, {} as never)) as unknown as CliStatusResult;
+    const value = (await tool.execute(
+      {},
+      {} as never,
+    )) as unknown as CliStatusResult;
 
     expect(value.status).toBe('error');
     expect(value.error?.kind).toBe('cli-error');
@@ -194,7 +209,10 @@ describe('dsh-victauri victauri_cli_status', () => {
     mockSpawn({ stdout: 'boom', exitCode: 2 });
 
     const tool = createVictauriCliStatusTool({ cliPath: cli });
-    const value = (await tool.execute({}, {} as never)) as unknown as CliStatusResult;
+    const value = (await tool.execute(
+      {},
+      {} as never,
+    )) as unknown as CliStatusResult;
 
     expect(value.status).toBe('error');
     expect(value.error?.kind).toBe('cli-error');
@@ -218,14 +236,24 @@ describe('dsh-victauri victauri_cli_status', () => {
   it('probeCliStatus:注入依赖下超时与非零退出均归一为 error', async () => {
     const timedOut = await probeCliStatus('victauri.exe', {
       locate: () => null,
-      run: async () => ({ exitCode: null, stdout: '', stderr: '', timedOut: true }),
+      run: async () => ({
+        exitCode: null,
+        stdout: '',
+        stderr: '',
+        timedOut: true,
+      }),
     });
     expect(timedOut.status).toBe('error');
     expect(timedOut.error?.kind).toBe('timeout');
 
     const failed = await probeCliStatus('victauri.exe', {
       locate: () => null,
-      run: async () => ({ exitCode: 1, stdout: '', stderr: 'nope', timedOut: false }),
+      run: async () => ({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'nope',
+        timedOut: false,
+      }),
     });
     expect(failed.status).toBe('error');
     expect(failed.error?.kind).toBe('cli-error');
@@ -233,9 +261,10 @@ describe('dsh-victauri victauri_cli_status', () => {
 
   it('timeout 真实路径:真实子进程超时 → status=error / kind=timeout', async () => {
     // 让 mock 的 spawn 委派给真实实现：走真实 runVictauriCli 的 kill + close 全链路
-    const actual = await vi.importActual<typeof import('node:child_process')>(
-      'node:child_process',
-    );
+    const actual =
+      await vi.importActual<typeof import('node:child_process')>(
+        'node:child_process',
+      );
     spawnMock.mockImplementation(actual.spawn as never);
 
     const result = await probeCliStatus(process.execPath, {

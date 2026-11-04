@@ -336,7 +336,8 @@ export function createVictauriCliStatusTool(
             type: 'string',
             enum: ['available', 'not_found', 'error'],
             required: true,
-            description: '探测结论：available=CLI 可用；not_found=未安装/不在 PATH；error=其他失败',
+            description:
+              '探测结论：available=CLI 可用；not_found=未安装/不在 PATH；error=其他失败',
           },
           version: {
             oneOf: [{ type: 'string' }, { type: 'null' }],
@@ -362,18 +363,24 @@ export function createVictauriCliStatusTool(
             type: 'string',
             enum: ['config', 'platform_default'],
             required: true,
-            description: 'requested_path 来源：config=配置注入；platform_default=平台默认',
+            description:
+              'requested_path 来源：config=配置注入；platform_default=平台默认',
           },
           actions: {
             type: 'array',
             items: { type: 'string' },
             required: true,
-            description: 'CLI 子命令口径（init/check/test/record/doctor/watch/invoke/bridge/coverage）',
+            description:
+              'CLI 子命令口径（init/check/test/record/doctor/watch/invoke/bridge/coverage）',
           },
           error: {
-            oneOf: [{ type: 'object', additionalProperties: true }, { type: 'null' }],
+            oneOf: [
+              { type: 'object', additionalProperties: true },
+              { type: 'null' },
+            ],
             required: true,
-            description: '失败时的结构化错误 {kind,message,hint}；available 时为 null',
+            description:
+              '失败时的结构化错误 {kind,message,hint}；available 时为 null',
           },
         },
       },
