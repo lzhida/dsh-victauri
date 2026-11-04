@@ -55,7 +55,7 @@ Victauri 全量 **35 个工具** + 1 个 CLI 桥工具 + 1 个 CLI 探测工具 
 ## 行为约定
 
 - **错误不抛栈**：连接失败 / HTTP 错误 / 工具执行失败统一返回结构化 `{error: {kind, message, hint}}`，`hint` 含自检指引（启动 app → `victauri check` → 跑 demo-app 验证链路）。
-- **screenshot 落盘**：`victauri_screenshot` 的 base64 结果落盘 `%TEMP%\dsh-victauri\screenshot-<ts>.png`，返回 `{path, mime_type, bytes}`，不占模型上下文。
+- **图像结果落盘**：`victauri_screenshot` / `victauri_trace`（frames）/ `victauri_animation`（scrub `capture=true`）的 base64 图像统一落盘 `%TEMP%\dsh-victauri\`，单图返回 `{path, mime_type, bytes}`，多帧返回 `paths[]`，不占模型上下文（详见 [docs/TOOLS.md](docs/TOOLS.md)「图像结果通道」）。
 - **别名兼容**：`victauri_eval_js`（`code`/`expression`）与 `victauri_query_db`（`query`/`sql`）双命名兼容，以实测名优先；别名键不透传服务端。
 - **数组包装**：顶层数组结果包装为 `{items: [...]}`（dsh 工具契约要求顶层 object）。
 - **版本兼容**：参数 schema 以 victauri 0.8.8（本机桥实测）与 0.10.x（官方文档）双源对齐，字段级差异在工具 description 内以 `[实测]` / `[文档]` / `[桥]` 标注。

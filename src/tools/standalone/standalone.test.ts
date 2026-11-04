@@ -7,7 +7,8 @@ import type { VictauriClient } from '../../client.ts';
 import { VictauriError } from '../../errors.ts';
 import { REST_TOOL_SPECS, STANDALONE_TOOL_COUNT } from './catalog.ts';
 import { createRestBridgeTool } from './bridge.ts';
-import { RENDER_MAX_CHARS, SCREENSHOT_DIR_NAME, renderJson } from './render.ts';
+import { IMAGE_DIR_NAME } from './image.ts';
+import { RENDER_MAX_CHARS, renderJson } from './render.ts';
 
 /** 最小 mock client:只实现 callTool,记录调用入参。 */
 function mockClient(
@@ -143,7 +144,7 @@ describe('dsh-victauri standalone 批', () => {
     });
     const result = (await tool.execute({}, {} as never)) as AnyRecord;
     const path = result['path'] as string;
-    expect(path).toContain(SCREENSHOT_DIR_NAME);
+    expect(path).toContain(IMAGE_DIR_NAME);
     expect(result['mime_type']).toBe('image/png');
     expect(result['bytes']).toBeGreaterThan(0);
     expect(existsSync(path)).toBe(true);

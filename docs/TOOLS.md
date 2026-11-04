@@ -29,7 +29,7 @@
 | 15  | `victauri_query_db`              | 只读 SQL 查询 SQLite                           | `query`（别名 `sql` 兼容）       |
 | 16  | `victauri_read_app_file`         | 读应用目录文件（text/base64）                  | `path`                           |
 | 17  | `victauri_resolve_command`       | 自然语言匹配命令                               | `query`                          |
-| 18  | `victauri_screenshot`            | 窗口截图（base64 → dsh 侧落盘返回路径）        | —                                |
+| 18  | `victauri_screenshot`            | 窗口截图（通用图像通道落盘返回路径）           | —                                |
 | 19  | `victauri_verify_state`          | 前后端状态比对                                 | `frontend_expr`                  |
 | 20  | `victauri_wait_for`              | 轮询等待条件（text/selector/url/ipc_idle…）    | `condition`                      |
 
@@ -56,6 +56,29 @@
 复合工具只有 `action` 是必填 enum；其余参数按子动作可选、原样透传，子动作级校验由
 victauri-plugin 端负责（本层不重复校验）。完整参数清单见各工具 description
 （`src/tools/compound/catalog.ts`）。
+
+## 图像结果通道（通用落盘）
+
+任何工具返回 `{data, mimeType}` 形态的图像值（顶层对象或含此类值的多块数组）
+都在 JSON 文本渲染（6000 字符截断，`renderJson`）**之前**分流落盘
+`%TEMP%\dsh-victauri\`，避免 base64 撑爆上下文或被截成残串：
+
+- 覆盖范围：`victauri_screenshot`（单图）、`victauri_trace` `action=frames`
+  （多帧多文件）、`victauri_animation` `action=scrub` + `capture=true`
+  （帧落盘，filmstrip/manifest 元数据合并回结果）；standalone 与 compound
+  两个批共用同一通道（识别逻辑在 `src/tools/standalone/image.ts`）。
+- 返回形状：单图 `{path, mime_type, bytes}`；多帧返回 `paths[]` +
+  `mime_type`（首图）+ `count`；`scrub` 的 meta JSON 字段原地合并
+  （`filmstrip.manifest[]`、`curve[]` 等照常可读）。
+- 命名：`<前缀>-<时间戳>[-<序号>].<扩展名>`——`screenshot-<ts>.png`
+  保持历史命名不变；多帧序号 `-001` 起，顺序 = 响应内顺序，扩展名由
+  mimeType 推导（png/jpg/svg/…，未知兜底 `bin`）。
+- 数量上限：单次调用最多落盘 `IMAGE_SAVE_MAX = 120` 个文件
+  （与 filmstrip 硬上限同值）；超出部分计入 `dropped` 并在 `note` 注明，
+  不静默丢弃。
+- 非 `image/*` mimeType（如音频）同通道落盘，但会在 `note` 注明未经
+  活体验证；落盘失败时回退原文返回（数组包成 `{items}`）并附
+  `image_save_error`，不吞错。
 
 ## CLI 桥（1 个）
 

@@ -4,7 +4,9 @@
  * 通用行为：
  * - 别名归一：eval_js(expression→code)、query_db(sql→query)——0.8.8 实测参数名优先，
  *   文档命名兼容（两者都给时以实测名为准）；
- * - screenshot 特判：base64 data 落盘 %TEMP%\dsh-victauri\，返回路径不占上下文；
+ * - 图像通道：结果中的 {data,mimeType} 形态图像值（顶层对象或 REST 多块数组，
+ *   覆盖 screenshot / trace frames / animation scrub filmstrip）在 renderJson
+ *   截断之前统一落盘 %TEMP%\dsh-victauri\ 返回路径，落盘失败回退原文并保留错误；
  * - 数组结果包装为 {items: [...]}（dsh execute 契约要求顶层 object，find_elements 实测顶层数组）；
  * - 错误面：VictauriError 系列不 throw，返回结构化 {error:{kind,message,hint}} +
  *   自检指引（启动 app / victauri check）。
@@ -14,8 +16,9 @@ import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools';
 import type { VictauriClient } from '../../client.ts';
 import { VictauriError, isVictauriError } from '../../errors.ts';
 import type { JsonValue } from '../../json.ts';
+import { normalizeImageResult, saveImage } from './image.ts';
 import type { RestToolSpec } from './catalog.ts';
-import { renderJson, saveScreenshot } from './render.ts';
+import { renderJson } from './render.ts';
 
 /** 工具运行期依赖：惰性取连接（装配层缓存复用；连接异步建立）。 */
 export interface BridgeDeps {
@@ -43,15 +46,25 @@ const ARG_ALIASES: Readonly<
   query_db: ['query', 'sql'],
 };
 
-/** screenshot 结果形状守卫。 */
-function isScreenshotValue(
-  value: unknown,
-): value is { data: string; mimeType: string; type?: string } {
-  if (typeof value !== 'object' || value === null) return false;
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record['data'] === 'string' && typeof record['mimeType'] === 'string'
-  );
+/**
+ * 图像通道：把 callTool 结果中的图像值落盘并替换为文件引用。
+ * 返回 null = 结果不含图像（调用方走原 toRecord 通道，零行为变化）。
+ * save 可注入用于测试落盘失败回退路径。
+ */
+export function applyImageChannel(
+  result: JsonValue,
+  toolName: string,
+  save: typeof saveImage = saveImage,
+): Record<string, JsonValue> | null {
+  try {
+    return normalizeImageResult(result, toolName, save);
+  } catch (err) {
+    // 落盘失败：回退原文返回并保留错误信息（不吞错）
+    return {
+      ...toRecord(result),
+      image_save_error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /** 数组结果守卫（find_elements 实测顶层数组）。 */
@@ -111,10 +124,9 @@ export function createRestBridgeTool(
         }
         const client = await deps.getClient();
         const result = await client.callTool(spec.name, callArgs);
-        // screenshot:base64 落盘返回路径
-        if (spec.name === 'screenshot' && isScreenshotValue(result)) {
-          return saveScreenshot(result.data, result.mimeType);
-        }
+        // 图像通道:{data,mimeType} 形态统一落盘返回路径;无图像走原通道
+        const imaged = applyImageChannel(result, spec.name);
+        if (imaged !== null) return imaged;
         return toRecord(result);
       } catch (err) {
         return toErrorValue(err);
