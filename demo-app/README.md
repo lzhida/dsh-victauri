@@ -33,7 +33,9 @@ pnpm smoke
 脚本会自己完成全流程，**无需手工起 app**：构建（`cargo build --features victauri`）→ 启动 demo-app →
 轮询 discovery 就绪 → 经 REST 主通道跑 9 项检查 → 打印 PASS/FAIL 摘要 → 结束进程树。
 
-- 覆盖检查：`/health`、`/info`、`/api/tools`（35 个工具清单）、`get_plugin_info`、`app_info`、
+- 覆盖检查：`/health`、`/info`、`/api/tools`（服务端 35 个工具清单——dsh 桥接后为
+  **38 个 dsh 工具** = 35 上游 1:1 + 3 插件自有：CLI 桥 / CLI 探测 / 工具发现）、
+  `get_plugin_info`、`app_info`、
   `eval_js`（`1+1 = 2`）、`dom_snapshot`（断言含 Greet 按钮）、`invoke_command`（`greet`）、
   无 token 访问 `/api/tools` → 401。
 - 端口不硬编码：从 discovery 的 `port` 文件读实际端口（顺延场景自动跟随）。

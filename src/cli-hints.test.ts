@@ -13,6 +13,7 @@ import {
   isBeyondUntil,
 } from './cli-hints.ts';
 import { isCliAction } from './cli.ts';
+import { COMPOUND_TOOL_SPECS } from './tools/compound/catalog.ts';
 import {
   PREVIEW_HEAD_CHARS,
   PREVIEW_MAX_CHARS,
@@ -518,5 +519,56 @@ describe('dsh-victauri 0.10.x 新增子命令口径（tools/call/run/logs）', (
     // 长驻口径两处写法不同（斜杠 vs 带空格），各自锁定
     expect(docs).toContain('watch / bridge / run');
     expect(readme).toContain('watch` / `bridge` / `run');
+  });
+
+  it('文档动作表与 catalog 枚举同源(logs/window/animation)+0.10.x 关键词锚点', () => {
+    const docs = readFileSync(join(REPO_ROOT, 'docs/TOOLS.md'), 'utf8');
+    const readme = readFileSync(join(REPO_ROOT, 'README.md'), 'utf8');
+    const enumOf = (tool: string): readonly string[] => {
+      const spec = COMPOUND_TOOL_SPECS.find((s) => s.name === tool);
+      const action = spec?.parameters['action'] as
+        { enum?: readonly string[] } | undefined;
+      return action?.enum ?? [];
+    };
+    // docs 动作表逐名锁定：catalog 改枚举而文档没跟 → 用例必红（D-1/D-2 与
+    // 批八 2/4 animation 3 值改动的同源护栏）
+    for (const a of enumOf('logs')) {
+      expect(docs, `logs ${a}`).toContain(`\`${a}\``);
+    }
+    for (const a of enumOf('window')) {
+      expect(docs, `window ${a}`).toContain(`\`${a}\``);
+    }
+    for (const a of enumOf('animation')) {
+      expect(docs, `animation ${a}`).toContain(`\`${a}\``);
+    }
+    // wait_for 10 值闭集在 docs 全量出现（D-3）
+    for (const c of [
+      'text',
+      'text_gone',
+      'selector',
+      'selector_gone',
+      'url',
+      'ipc_idle',
+      'network_idle',
+      'expression',
+      'event',
+      'log',
+    ]) {
+      expect(docs, `wait_for ${c}`).toContain(`\`${c}\``);
+    }
+    // D-4 新参数关键词锚点：README 与 docs 各至少一次
+    for (const kw of [
+      'timeout_ms',
+      'with_logs',
+      'since_seq',
+      'backend_log_cursor',
+      'include_hidden',
+    ]) {
+      expect(docs, `docs ${kw}`).toContain(kw);
+      expect(readme, `readme ${kw}`).toContain(kw);
+    }
+    // E-2 工具数口径：38 = 35 上游 + 3 插件自有
+    expect(readme).toContain('38 个 dsh 工具');
+    expect(readme).toContain('35 个');
   });
 });

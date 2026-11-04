@@ -13,34 +13,34 @@
 
 ## standalone 批（20 个，victauri 名 1:1 映射 dsh `victauri_<name>`）
 
-| #   | 工具                             | 用途                                           | 必填参数                         |
-| --- | -------------------------------- | ---------------------------------------------- | -------------------------------- |
-| 1   | `victauri_app_info`              | 应用信息（config/databases/env/paths/process） | —                                |
-| 2   | `victauri_app_state`             | 注册 probe 的后端状态快照                      | —                                |
-| 3   | `victauri_assert_semantic`       | 语义断言（evaluate + condition 校验）          | `expression`、`condition`        |
-| 4   | `victauri_check_ipc_integrity`   | IPC 完整性（stale/errored call）               | —                                |
-| 5   | `victauri_detect_ghost_commands` | 幽灵命令检测（无 handler 的调用）              | —                                |
-| 6   | `victauri_dom_snapshot`          | DOM 快照（compact/json + stale refs）          | —                                |
-| 7   | `victauri_eval_js`               | webview 内求值 JS                              | `code`（别名 `expression` 兼容） |
-| 8   | `victauri_find_elements`         | 按 text/role/selector 搜元素                   | —                                |
-| 9   | `victauri_get_diagnostics`       | 环境诊断（service worker/iframe/CSP）          | —                                |
-| 10  | `victauri_get_memory_stats`      | OS 级进程内存统计                              | —                                |
-| 11  | `victauri_get_plugin_info`       | Victauri 插件配置/端口/命令清单                | —                                |
-| 12  | `victauri_get_registry`          | 注册命令目录（可按名过滤）                     | —                                |
-| 13  | `victauri_invoke_command`        | 经 IPC 调用 Tauri 命令                         | `command`                        |
-| 14  | `victauri_list_app_dir`          | 列应用数据/配置/日志目录                       | —                                |
-| 15  | `victauri_query_db`              | 只读 SQL 查询 SQLite                           | `query`（别名 `sql` 兼容）       |
-| 16  | `victauri_read_app_file`         | 读应用目录文件（text/base64）                  | `path`                           |
-| 17  | `victauri_resolve_command`       | 自然语言匹配命令                               | `query`                          |
-| 18  | `victauri_screenshot`            | 窗口截图（通用图像通道落盘返回路径）           | —                                |
-| 19  | `victauri_verify_state`          | 前后端状态比对                                 | `frontend_expr`                  |
-| 20  | `victauri_wait_for`              | 轮询等待条件（text/selector/url/ipc_idle…）    | `condition`                      |
+| #   | 工具                             | 用途                                                          | 必填参数                         |
+| --- | -------------------------------- | ------------------------------------------------------------- | -------------------------------- |
+| 1   | `victauri_app_info`              | 应用信息（config/databases/env/paths/process）                | —                                |
+| 2   | `victauri_app_state`             | 注册 probe 的后端状态快照                                     | —                                |
+| 3   | `victauri_assert_semantic`       | 语义断言（evaluate + condition 校验）                         | `expression`、`condition`        |
+| 4   | `victauri_check_ipc_integrity`   | IPC 完整性（stale/errored call）                              | —                                |
+| 5   | `victauri_detect_ghost_commands` | 幽灵命令检测（无 handler 的调用）                             | —                                |
+| 6   | `victauri_dom_snapshot`          | DOM 快照（compact/json + stale refs）                         | —                                |
+| 7   | `victauri_eval_js`               | webview 内求值 JS                                             | `code`（别名 `expression` 兼容） |
+| 8   | `victauri_find_elements`         | 按 text/role/selector 搜元素                                  | —                                |
+| 9   | `victauri_get_diagnostics`       | 环境诊断（service worker/iframe/CSP）                         | —                                |
+| 10  | `victauri_get_memory_stats`      | OS 级进程内存统计                                             | —                                |
+| 11  | `victauri_get_plugin_info`       | Victauri 插件配置/端口/命令清单                               | —                                |
+| 12  | `victauri_get_registry`          | 注册命令目录（可按名过滤）                                    | —                                |
+| 13  | `victauri_invoke_command`        | 经 IPC 调用 Tauri 命令                                        | `command`                        |
+| 14  | `victauri_list_app_dir`          | 列应用数据/配置/日志目录                                      | —                                |
+| 15  | `victauri_query_db`              | 只读 SQL 查询 SQLite                                          | `query`（别名 `sql` 兼容）       |
+| 16  | `victauri_read_app_file`         | 读应用目录文件（text/base64）                                 | `path`                           |
+| 17  | `victauri_resolve_command`       | 自然语言匹配命令                                              | `query`                          |
+| 18  | `victauri_screenshot`            | 窗口截图（通用图像通道落盘返回路径）                          | —                                |
+| 19  | `victauri_verify_state`          | 前后端状态比对                                                | `frontend_expr`                  |
+| 20  | `victauri_wait_for`              | 轮询等待条件（10 值闭集，见下文「后端日志与 0.10.x 新参数」） | `condition`                      |
 
 ## compound 批（15 个，`action` 参数选择子动作）
 
 | 工具                  | action 枚举（必填）                                                                                                                                                                                                                    |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `victauri_animation`  | `list` `scrub` `sample` `clear`                                                                                                                                                                                                        |
+| `victauri_animation`  | `list` `scrub` `sample`（0.10.3 基线三动作；`clear` 已废弃，清空录制改经 `sample` 的 `clear:true` 参数）                                                                                                                               |
 | `victauri_css`        | `inject` `remove`                                                                                                                                                                                                                      |
 | `victauri_explain`    | `summary` `last_action` `diff`                                                                                                                                                                                                         |
 | `victauri_fault`      | `inject` `list` `clear` `clear_all`                                                                                                                                                                                                    |
@@ -48,13 +48,13 @@
 | `victauri_inspect`    | `get_styles` `get_bounding_boxes` `highlight` `clear_highlights` `audit_accessibility` `get_performance`                                                                                                                               |
 | `victauri_interact`   | `click` `double_click` `hover` `focus` `scroll_into_view` `select_option`                                                                                                                                                              |
 | `victauri_introspect` | `command_timings` `coverage` `command_catalog` `contract_record` `contract_check` `contract_list` `contract_clear` `startup_timing` `capabilities` `db_health` `plugin_state` `processes` `plugin_tasks` `event_bus` `event_bus_clear` |
-| `victauri_logs`       | `console` `network` `ipc` `navigation` `dialogs` `events` `slow_ipc` `clear`                                                                                                                                                           |
+| `victauri_logs`       | `console` `network` `ipc` `navigation` `dialogs` `events` `slow_ipc` `clear` `backend` `backend_digest` `stdout`（后三个为 0.10.2 起的后端日志动作）                                                                                   |
 | `victauri_navigate`   | `go_to` `go_back` `get_history` `set_dialog_response` `get_dialog_log`                                                                                                                                                                 |
 | `victauri_recording`  | `start` `stop` `checkpoint` `list_checkpoints` `get_events` `events_between` `get_replay` `export` `import` `replay` `flush`                                                                                                           |
 | `victauri_route`      | `add` `list` `clear` `clear_all` `matches`                                                                                                                                                                                             |
 | `victauri_storage`    | `get` `set` `delete` `get_cookies`                                                                                                                                                                                                     |
 | `victauri_trace`      | `start` `stop` `status` `frames`                                                                                                                                                                                                       |
-| `victauri_window`     | `get_state` `list` `manage` `resize` `move_to` `set_title`                                                                                                                                                                             |
+| `victauri_window`     | `get_state` `list` `manage` `resize` `move_to` `set_title` `introspectability`（探测每个窗口 JS bridge 可达性，`introspectable:false` + `visible:true` 几乎总是缺 `victauri:default` capability）                                      |
 
 复合工具只有 `action` 是必填 enum；其余参数按子动作可选、原样透传，子动作级校验由
 victauri-plugin 端负责（本层不重复校验）。完整参数清单见各工具 description
@@ -81,6 +81,23 @@ Rust `AnimationParams` 在 0.8.8 / 0.10.2 均无该字段）。
   （传入被接受但作用域不按窗口限定）；两条 [源码] 口径经活体证实，无回滚项。
 - 未知字段在服务端被静默忽略（serde 未开启 `deny_unknown_fields`，全 crate 无该
   属性），故 0.8.8 下误传 `webview_label` 不会报错，但也不会生效。
+
+## 后端日志与 0.10.x 新参数
+
+- **`victauri_wait_for` 条件为 10 值闭集**：`text` `text_gone` `selector`
+  `selector_gone` `url` `ipc_idle` `network_idle` `expression` `event` `log`
+  （`log` 为 0.10.2 起的后端日志条件；上游新增条件需随插件升级才能用）。
+- **后端日志三段式**（0.10.2 起）：① `victauri_invoke_command` 传
+  `with_logs=true`，返回体带 `backend_log_cursor`（调用起点游标）；
+  ② `victauri_wait_for` 传 `condition:'log'` + `since_seq:<cursor>` 阻塞到
+  匹配的后端行被记录（`level` / `fields` 过滤，匹配脱敏后文本，超时返回
+  `missed_entries`）；③ `victauri_logs` `action='backend_digest'` 一次拿到
+  分级计数 / 最吵 target / 折叠模板 / 每个 panic 的摘要盘点。
+  `since_seq` 为向前分页游标：返回游标之后**最旧的**条目，`next_seq` 紧随其后。
+- **`victauri_find_elements` 0.10.3 新参**：`title_attr`（title 属性子串）、
+  `attribute` / `attribute_value`（按属性名/值过滤）、`text_exact`（精确
+  文本匹配）、`include_hidden`（true 才返回隐藏元素，默认跳过）；同版本起
+  可访问名与 visible/enabled 为诚实计算值。
 
 ## 图像结果通道（通用落盘）
 
