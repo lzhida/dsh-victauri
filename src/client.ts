@@ -81,15 +81,18 @@ export class VictauriClient {
 
   /**
    * 执行工具并解包 {result} 包裹。
+   * @param timeoutMsOverride - 本次请求的超时覆盖毫秒（per-tool 预算，
+   *   由工具层经 resolveRequestBudgetMs 解析后传入）；缺省沿用构造超时。
    * @throws VictauriHttpError HTTP 非 2xx
    * @throws VictauriError('tool-error') 响应不是 {result: ...} 形状
    */
   async callTool(
     toolName: string,
     args: Record<string, JsonValue> = {},
+    timeoutMsOverride?: number,
   ): Promise<JsonValue> {
     const path = `/api/tools/${encodeURIComponent(toolName)}`;
-    const response = await this.request(path, 'POST', args);
+    const response = await this.request(path, 'POST', args, timeoutMsOverride);
     const bodyText = await response.text();
     if (!response.ok) {
       throw new VictauriHttpError(
@@ -139,15 +142,20 @@ export class VictauriClient {
     }
   }
 
-  /** 底层 fetch:统一 Bearer/Content-Type/超时(AbortController)。 */
+  /**
+   * 底层 fetch:统一 Bearer/Content-Type/超时(AbortController)。
+   * timeoutMsOverride 缺省时用构造超时;单一计时器,不与 HTTP 层叠加双计时。
+   */
   private async request(
     path: string,
     method: 'GET' | 'POST',
     jsonBody?: Record<string, JsonValue>,
+    timeoutMsOverride?: number,
   ): Promise<Response> {
     const url = `${this.baseUrl}${path}`;
+    const budget = timeoutMsOverride ?? this.timeoutMs;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), budget);
     try {
       return await fetch(url, {
         method,
@@ -162,7 +170,7 @@ export class VictauriClient {
       });
     } catch (err) {
       if (controller.signal.aborted) {
-        throw new VictauriTimeoutError(url, this.timeoutMs);
+        throw new VictauriTimeoutError(url, budget);
       }
       throw new VictauriError(
         'http-error',

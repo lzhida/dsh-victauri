@@ -18,6 +18,7 @@ import { VictauriError, isVictauriError } from '../../errors.ts';
 import type { JsonValue } from '../../json.ts';
 import { normalizeImageResult, saveImage } from './image.ts';
 import type { RestToolSpec } from './catalog.ts';
+import { resolveRequestBudgetMs } from './timeout.ts';
 import { renderJson } from './render.ts';
 
 /** 工具运行期依赖：惰性取连接（装配层缓存复用；连接异步建立）。 */
@@ -123,7 +124,13 @@ export function createRestBridgeTool(
           }
         }
         const client = await deps.getClient();
-        const result = await client.callTool(spec.name, callArgs);
+        // per-tool 请求预算:wait_for 动态 > spec 声明 > 无覆盖(客户端默认链)
+        const budget = resolveRequestBudgetMs(
+          spec.name,
+          callArgs,
+          spec.requestBudgetMs,
+        );
+        const result = await client.callTool(spec.name, callArgs, budget);
         // 图像通道:{data,mimeType} 形态统一落盘返回路径;无图像走原通道
         const imaged = applyImageChannel(result, spec.name);
         if (imaged !== null) return imaged;

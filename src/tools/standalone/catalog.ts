@@ -24,6 +24,11 @@ export interface RestToolSpec {
   readonly description: string;
   /** 参数 schema（顶层属性映射；来源见 description 尾注）。 */
   readonly parameters: ParameterSchemaSpec;
+  /**
+   * 该工具的 REST 请求预算毫秒（可选声明；语义见 timeout.ts 优先级文档）。
+   * 声明值夹 TOOL_BUDGET_MAX_MS=120s；未声明的工具沿用客户端配置/默认 30s。
+   */
+  readonly requestBudgetMs?: number;
 }
 
 /** 标量参数辅助（standalone/compound catalog 共用）。 */

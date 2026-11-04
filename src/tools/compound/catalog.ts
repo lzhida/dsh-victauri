@@ -238,6 +238,8 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       slow_threshold_ms: NUM('(command_timings) 只显示慢于此毫秒数的命令'),
       webview_label: WEBVIEW,
     },
+    // event_bus 大缓冲导出 / command_catalog 挖掘活体 IPC 日志：长操作显式预算
+    requestBudgetMs: 90_000,
   },
   {
     name: 'logs',
@@ -395,6 +397,8 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       webview_label: WEBVIEW,
       with_events: BOOL('(start) 同时启动事件录制器'),
     },
+    // frames 可取全部环形缓冲（上限 600 帧 base64 PNG）：长操作显式预算
+    requestBudgetMs: 90_000,
   },
   {
     name: 'window',

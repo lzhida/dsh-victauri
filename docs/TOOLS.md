@@ -80,6 +80,29 @@ victauri-plugin 端负责（本层不重复校验）。完整参数清单见各�
   活体验证；落盘失败时回退原文返回（数组包成 `{items}`）并附
   `image_save_error`，不吞错。
 
+## 请求超时语义（REST 通道）
+
+REST 工具调用（standalone 20 + compound 15）的超时按**四级优先级**解析
+（实现与常量在 `src/tools/standalone/timeout.ts`，单测
+`src/tools/standalone/timeout.test.ts` 锁定）：
+
+1. **`victauri_wait_for` 动态预算**：`timeout_ms` 参数 + 5s 余量
+   （`WAIT_FOR_BUDGET_MARGIN_MS`，覆盖网络与轮询间隔开销）——长轮询不被
+   全局默认 30s 掐断；
+2. **工具声明预算 `requestBudgetMs`**（spec 静态声明）：目前仅
+   `victauri_trace` 与 `victauri_introspect`（各 90s）——`frames` 可取
+   全部环形缓冲（上限 600 帧 base64 PNG），`event_bus` / `command_catalog`
+   是大缓冲导出与活体 IPC 日志挖掘的长操作；
+3. **配置 `requestTimeoutMs`**（默认 30000，见 README 配置表）；
+4. 内置默认 `DEFAULT_TIMEOUT_MS = 30s`。
+
+- 工具来源的预算（1/2 档）一律夹到 **`TOOL_BUDGET_MAX_MS = 120s`** 硬上限，
+  防预算过大被感知为长卡顿；未声明的工具行为与此前完全一致（回归测试锁定）。
+- 超时错误仍为 `kind='timeout'`（`VictauriTimeoutError`），错误携带**实际
+  生效的预算毫秒**；请求层保持单一计时器（无叠加计时）。
+- CLI 桥 `victauri_cli` 不受本机制影响（子进程超时走自己的 `timeout_ms`
+  参数，默认 120000，超时返回 `timed_out=true` + 部分输出）。
+
 ## CLI 桥（1 个）
 
 | 工具           | 子命令（action 枚举）                                                        |

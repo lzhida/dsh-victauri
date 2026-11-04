@@ -31,13 +31,13 @@ pnpm dsh plugin --profile test add github:lzhida/dsh-victauri
 
 ## 配置
 
-| 字段               | 类型     | 默认    | 说明                                                                                                                            |
-| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `appIdentifier`    | string   | `''`    | 按 Tauri app bundle id 过滤实例（discovery `metadata.identifier`，对应 victauri bridge 的 `--app` 语义）；留空 = 自动选最新实例 |
-| `portOverride`     | number   | 空      | 固定服务端口（须出现在 discovery 中）；留空 = 自动发现                                                                          |
-| `cliPath`          | string   | `''`    | `victauri` CLI 可执行文件路径；留空 = 平台默认（win32 为 `victauri.exe`）                                                       |
-| `requestTimeoutMs` | number   | `30000` | REST 请求超时毫秒                                                                                                               |
-| `disabledTools`    | string[] | `[]`    | 不注册的工具全名列表（`victauri_` 前缀全名）                                                                                    |
+| 字段               | 类型     | 默认    | 说明                                                                                                                                   |
+| ------------------ | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `appIdentifier`    | string   | `''`    | 按 Tauri app bundle id 过滤实例（discovery `metadata.identifier`，对应 victauri bridge 的 `--app` 语义）；留空 = 自动选最新实例        |
+| `portOverride`     | number   | 空      | 固定服务端口（须出现在 discovery 中）；留空 = 自动发现                                                                                 |
+| `cliPath`          | string   | `''`    | `victauri` CLI 可执行文件路径；留空 = 平台默认（win32 为 `victauri.exe`）                                                              |
+| `requestTimeoutMs` | number   | `30000` | REST 请求超时毫秒（`wait_for` 动态预算与 `trace`/`introspect` 声明预算 90s 可按工具覆盖，上限 120s，见 docs/TOOLS.md「请求超时语义」） |
+| `disabledTools`    | string[] | `[]`    | 不注册的工具全名列表（`victauri_` 前缀全名）                                                                                           |
 
 ## 工具清单
 
@@ -56,6 +56,7 @@ Victauri 全量 **35 个工具** + 1 个 CLI 桥工具 + 1 个 CLI 探测工具 
 
 - **错误不抛栈**：连接失败 / HTTP 错误 / 工具执行失败统一返回结构化 `{error: {kind, message, hint}}`，`hint` 含自检指引（启动 app → `victauri check` → 跑 demo-app 验证链路）。
 - **图像结果落盘**：`victauri_screenshot` / `victauri_trace`（frames）/ `victauri_animation`（scrub `capture=true`）的 base64 图像统一落盘 `%TEMP%\dsh-victauri\`，单图返回 `{path, mime_type, bytes}`，多帧返回 `paths[]`，不占模型上下文（详见 [docs/TOOLS.md](docs/TOOLS.md)「图像结果通道」）。
+- **按工具差异化超时**：`victauri_wait_for` 请求预算 = `timeout_ms` + 5s 余量，`victauri_trace` / `victauri_introspect` 固定 90s 声明预算（上限 120s）；其余工具沿用 `requestTimeoutMs`（默认 30000）不变（详见 [docs/TOOLS.md](docs/TOOLS.md)「请求超时语义」）。
 - **别名兼容**：`victauri_eval_js`（`code`/`expression`）与 `victauri_query_db`（`query`/`sql`）双命名兼容，以实测名优先；别名键不透传服务端。
 - **数组包装**：顶层数组结果包装为 `{items: [...]}`（dsh 工具契约要求顶层 object）。
 - **版本兼容**：参数 schema 以 victauri 0.8.8（本机桥实测）与 0.10.x（官方文档）双源对齐，字段级差异在工具 description 内以 `[实测]` / `[文档]` / `[桥]` 标注。
