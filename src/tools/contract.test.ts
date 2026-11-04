@@ -213,4 +213,82 @@ describe('dsh-victauri 工具面契约', () => {
     // 合法 limit 不受影响
     expect(trace!.parameters).toHaveProperty('limit');
   });
+
+  it('standalone 0.10.3 对齐:invoke_command/wait_for/find_elements 新增参数齐备、可选且带来源标注', () => {
+    const specOf = (name: string) =>
+      REST_TOOL_SPECS.find((spec) => spec.name === name)!;
+    const propOf = (name: string, key: string) =>
+      specOf(name).parameters[key] as
+        | {
+            type?: string;
+            description?: string;
+            required?: true;
+            enum?: readonly string[];
+          }
+        | undefined;
+
+    // invoke_command:timeout_ms(0.9.0 引入,0.10.3 文档仍收录)+with_logs(0.10.2)
+    expect(propOf('invoke_command', 'timeout_ms')?.type).toBe('integer');
+    expect(propOf('invoke_command', 'with_logs')?.type).toBe('boolean');
+    // wait_for:condition 枚举补 log + level/fields/since_seq(0.10.2)
+    expect(propOf('wait_for', 'condition')?.enum).toEqual([
+      'text',
+      'text_gone',
+      'selector',
+      'selector_gone',
+      'url',
+      'ipc_idle',
+      'network_idle',
+      'expression',
+      'event',
+      'log',
+    ]);
+    expect(propOf('wait_for', 'level')?.type).toBe('string');
+    expect(propOf('wait_for', 'fields')?.type).toBe('object');
+    expect(propOf('wait_for', 'since_seq')?.type).toBe('integer');
+    // find_elements:title_attr(0.10.3 文档)+attribute/attribute_value/text_exact/include_hidden(CHANGELOG)
+    for (const key of [
+      'title_attr',
+      'attribute',
+      'attribute_value',
+      'text_exact',
+      'include_hidden',
+    ]) {
+      expect(propOf('find_elements', key), key).toBeDefined();
+    }
+    expect(propOf('find_elements', 'text_exact')?.type).toBe('boolean');
+    expect(propOf('find_elements', 'include_hidden')?.type).toBe('boolean');
+
+    // 新增参数全部可选(透传型,不得标 required)且必须带来源标注
+    const NEW_PARAMS: readonly (readonly [string, string])[] = [
+      ['invoke_command', 'timeout_ms'],
+      ['invoke_command', 'with_logs'],
+      ['wait_for', 'level'],
+      ['wait_for', 'fields'],
+      ['wait_for', 'since_seq'],
+      ['find_elements', 'title_attr'],
+      ['find_elements', 'attribute'],
+      ['find_elements', 'attribute_value'],
+      ['find_elements', 'text_exact'],
+      ['find_elements', 'include_hidden'],
+    ];
+    for (const [tool, key] of NEW_PARAMS) {
+      const prop = propOf(tool, key);
+      expect(prop, `${tool}.${key}`).toBeDefined();
+      expect(prop?.required, `${tool}.${key}.required`).toBeUndefined();
+      expect(prop?.description, `${tool}.${key}.description`).toMatch(
+        /\[(文档|CHANGELOG|实测)/,
+      );
+    }
+
+    // 后端日志三段式套路与捕获量旋钮落在 invoke_command / wait_for 描述里
+    for (const tool of ['invoke_command', 'wait_for']) {
+      const desc = specOf(tool).description;
+      expect(desc, tool).toContain('backend_log_cursor');
+      expect(desc, tool).toContain('VICTAURI_LOG_LEVEL');
+      expect(desc, tool).toContain('VICTAURI_LOG_CAPACITY');
+    }
+    // wait_for.condition 仍是必填（0.8.8 实测 missing field `condition`）
+    expect(propOf('wait_for', 'condition')?.required).toBe(true);
+  });
 });

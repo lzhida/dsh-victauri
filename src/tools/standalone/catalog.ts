@@ -3,8 +3,15 @@
  *
  * 参数 schema 来源（每个工具已标注）：
  * - [实测] 本机活体实例（victauri 0.8.8，REST POST /api/tools/<name> 空参探测
- *   "missing field" 错误消息 + 成功调用返回形状）——权威来源；
- * - [文档] tools-reference / MCP 工具描述（0.10.2）——与实测漂移处显式注明。
+ *   "missing field" 错误消息 + 成功调用返回形状）——旧版服务端行为的权威来源；
+ * - [文档] 上游 tools-reference（0.10.3）——当前目标口径；
+ * - [CHANGELOG] 上游 CHANGELOG（0.9.0–0.10.3）——文档参数表未收录的新增项以它为准
+ *   （例：0.10.3 的 find_elements 四新参、0.9.0 引入的 invoke_command.timeout_ms）。
+ *
+ * 基线声明（0.10.3 双源对齐）：以 [文档 0.10.3] + [CHANGELOG 0.10.3] 双源为基线，
+ * 与 [实测 0.8.8] 历史记录逐项核对；一致处不另标注，差异处按来源标注。
+ * 新增参数全部可选且为透传型（服务端按自身版本校验），旧版服务端不会因
+ * "未使用的可选参数" 而失败——仅当真的把新参数发给旧服务端时由服务端自行决定。
  *
  * ParameterSchemaSpec 顶层即属性映射（implicit open object root），
  * required 是 per-property `required: true` 注解。
@@ -48,6 +55,17 @@ export const INT = (description: string, required = false) => ({
 export const BOOL = (description: string) => ({
   type: 'boolean' as const,
   description,
+});
+/** 闭合枚举参数辅助（值域由服务端定义，本层只做透传前的收敛提示）。 */
+export const ENUM = (
+  description: string,
+  values: readonly string[],
+  required = false,
+) => ({
+  type: 'string' as const,
+  enum: [...values],
+  description,
+  ...(required ? { required: true as const } : {}),
 });
 export const WEBVIEW = STR('目标 webview 标签;缺省取第一个可用 webview [文档]');
 
@@ -152,7 +170,9 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     description:
       '按文本/角色/test_id/CSS 选择器/可访问名搜索元素,返回轻量匹配与 ref 句柄。' +
       '全部条件可选(可组合);返回顶层数组,本插件包装为 {items:[...]}。' +
-      'schema 来源：[文档] + [实测 0.8.8 空参成功(返回数组)]。',
+      '0.10.3 起服务端计算可访问名并给出诚实的 visible/enabled,文本匹配返回最深的匹配节点;' +
+      'exact 与 text_exact 的取舍以服务端实现为准(0.10.3 文档参数表未收录 text_exact)。' +
+      'schema 来源：[文档 0.10.3 参数表] + [CHANGELOG 0.10.3 attribute/attribute_value/text_exact/include_hidden] + [实测 0.8.8 空参成功(返回数组)]。',
     parameters: {
       alt: STR('alt 文本子串匹配(忽略大小写) [文档]'),
       css: STR('CSS 选择器(也接受 selector 别名) [文档]'),
@@ -167,6 +187,19 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
       tag: STR('HTML 标签名,如 button/input [文档]'),
       test_id: STR('data-testid 属性值精确匹配 [文档]'),
       text: STR('文本内容子串匹配(忽略大小写) [文档]'),
+      title_attr: STR('title 属性子串匹配(忽略大小写) [文档 0.10.3]'),
+      attribute: STR(
+        'HTML 属性名匹配(与 attribute_value 配合使用;语义按参数名推断,以服务端实现为准) [CHANGELOG 0.10.3]',
+      ),
+      attribute_value: STR(
+        'attribute 指定的属性值匹配(与 attribute 配合使用;语义按参数名推断,以服务端实现为准) [CHANGELOG 0.10.3]',
+      ),
+      text_exact: BOOL(
+        '文本精确匹配(0.10.3 新增;与 exact 的区别以服务端实现为准) [CHANGELOG 0.10.3]',
+      ),
+      include_hidden: BOOL(
+        '包含隐藏元素(默认只返回可见元素;语义按参数名推断,以服务端实现为准) [CHANGELOG 0.10.3]',
+      ),
       webview_label: WEBVIEW,
     },
   },
@@ -212,7 +245,19 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     description:
       '经 IPC 调用注册的 Tauri 命令(等价前端 invoke),调用会入日志且可验证。' +
       '必填 command;args 为 JSON 对象(键=命令参数名)。隐私命令过滤可能拦截。' +
-      'schema 来源：[实测 0.8.8 报 missing field `command`] + [文档 args 形状]。',
+      'timeout_ms 是服务端整次调用预算(发命令+等结果,默认 30s、上限 300000),给合法慢命令调大;' +
+      '注意本通道自身的 REST 请求预算是独立的一层(默认 30s,invoke_command 未单独放宽),' +
+      '超过它的 timeout_ms 不会让本插件等更久。' +
+      'with_logs=true 时返回变为 {result, backend_logs, backend_log_cursor}:backend_logs 是调用期间' +
+      '记录的后端日志(debug 及以上,含并发后台活动),失败调用(命令报错/超时)的错误结果里也带日志;' +
+      '需服务端具备 logs.backend 能力,且应用侧已装 log_layer/log_logger/wrap_logger 之一(否则捕获为空)。' +
+      '后端日志调试三段式:①本工具 with_logs=true 拿 backend_log_cursor → ' +
+      '②wait_for(condition=log, since_seq=backend_log_cursor) 等下一条日志 → ' +
+      '③logs(action=backend_digest) 看全局摘要(上游 0.10.2 起提供;若当前组合尚未开放该子动作,前两步仍可用);' +
+      '捕获量由服务端环境变量 VICTAURI_LOG_LEVEL(trace|debug|info|warn|error,默认 debug)与 ' +
+      'VICTAURI_LOG_CAPACITY(默认 5000 条、上限 100000)调节。' +
+      'schema 来源：[实测 0.8.8 报 missing field `command`] + [文档 0.10.3 args/timeout_ms/with_logs] + ' +
+      '[CHANGELOG 0.9.0 引入 timeout_ms、0.10.2 with_logs 返回形状]。',
     parameters: {
       command: STR(
         '要调用的 Tauri 命令名,如 greet/save_settings [实测必填]',
@@ -223,6 +268,13 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
         additionalProperties: true,
         description: '命令参数 JSON 对象 [文档]',
       },
+      timeout_ms: INT(
+        '服务端整次调用预算毫秒(发命令+等结果,默认 30000,上限 300000;0.9.0 引入) [文档 0.10.3]',
+      ),
+      with_logs: BOOL(
+        'true 时返回变为 {result, backend_logs, backend_log_cursor},附调用期间的后端日志;' +
+          '需服务端后端日志捕获 [文档 0.10.3]',
+      ),
       webview_label: WEBVIEW,
     },
   },
@@ -321,23 +373,59 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     title: '条件等待',
     description:
       '按固定间隔轮询直到条件满足或超时。必填 condition:text|text_gone|selector|selector_gone|url|' +
-      'ipc_idle|network_idle|expression|event;配套 value/expected/poll_ms(默认 200)/timeout_ms(默认 10000)/' +
-      'since_ms(默认 2000, event 回看窗口)。expected 为任意 JSON 值(原样透传不字符串化)。' +
-      'schema 来源：[实测 0.8.8 报 missing field `condition`] + [文档]。',
+      'ipc_idle|network_idle|expression|event|log;配套 value/expected/poll_ms(默认 200)/timeout_ms(默认 10000)/' +
+      'since_ms(默认 2000, event/log 回看窗口)。expected 为任意 JSON 值(原样透传不字符串化)。' +
+      'condition=log 阻塞到后端日志出现含 value 的行(大小写不敏感,匹配 message/target/fields/spans),' +
+      'level 限定最低级别,fields 要求结构化字段等值匹配(大小写不敏感),' +
+      'since_seq 只接受序号≥该值的行(优先于 since_ms);边沿触发,' +
+      '超时返回 missed_entries(等待前被驱逐的条目数);需服务端开启后端日志捕获。' +
+      '游标来源是 invoke_command(with_logs=true) 返回的 backend_log_cursor,' +
+      '完整三段式套路与捕获量调节(VICTAURI_LOG_LEVEL 默认 debug、VICTAURI_LOG_CAPACITY 默认 5000 条' +
+      '上限 100000)见 invoke_command 的 with_logs 说明。' +
+      'schema 来源：[实测 0.8.8 报 missing field `condition`] + [文档 0.10.3 condition 枚举与 log 参数] + ' +
+      '[CHANGELOG 0.10.2 log 条件]。',
     parameters: {
-      condition: STR(
-        '等待条件:text|text_gone|selector|selector_gone|url|ipc_idle|network_idle|expression|event [实测必填]',
+      condition: ENUM(
+        '等待条件:text|text_gone|selector|selector_gone|url|ipc_idle|network_idle|expression|event|log ' +
+          '(值域按 0.10.3 闭集校验;上游后续新增条件需随插件升级才能用) [实测必填]',
+        [
+          'text',
+          'text_gone',
+          'selector',
+          'selector_gone',
+          'url',
+          'ipc_idle',
+          'network_idle',
+          'expression',
+          'event',
+          'log',
+        ],
         true,
       ),
       value: STR(
-        '条件值:文本/CSS 选择器/URL 子串/JS 表达式/Tauri 事件名 [文档]',
+        '条件值:文本/CSS 选择器/URL 子串/JS 表达式/Tauri 事件名;' +
+          'condition=log 时为日志行须含的文本 [文档]',
       ),
       expected: JSON_VALUE(
         '条件期望值(任意 JSON 值:字符串/数值/布尔/null/数组/对象,原样透传不字符串化);缺省任意真值 [文档]',
       ),
+      level: STR(
+        'condition=log 的最低日志级别:trace|debug|info|warn|error [文档 0.10.3]',
+      ),
+      fields: {
+        type: 'object',
+        additionalProperties: true,
+        description:
+          'condition=log 时日志行的结构化字段须等值匹配(大小写不敏感);' +
+          '服务端开启脱敏时匹配的是脱敏后文本(如 key=value 对已被过滤) [文档 0.10.3]',
+      },
+      since_seq: INT(
+        'condition=log 只接受序号≥该值的日志行(优先于 since_ms);' +
+          '取 invoke_command with_logs 的 backend_log_cursor [文档 0.10.3]',
+      ),
       poll_ms: INT('轮询间隔毫秒,默认 200 [文档]'),
       timeout_ms: INT('超时毫秒,默认 10000 [文档]'),
-      since_ms: INT('event 条件回看窗口毫秒,默认 2000 [文档]'),
+      since_ms: INT('event/log 条件回看窗口毫秒,默认 2000 [文档]'),
       webview_label: WEBVIEW,
     },
   },

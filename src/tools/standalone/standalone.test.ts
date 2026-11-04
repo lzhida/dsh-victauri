@@ -196,4 +196,75 @@ describe('dsh-victauri standalone 批', () => {
     }
     expect(standalone.size).toBe(20);
   });
+
+  it('0.10.3 新增参数原样透传给服务端(invoke_command/wait_for/find_elements)', async () => {
+    const { client, calls } = mockClient(async () => ({ ok: true }));
+
+    // invoke_command:timeout_ms + with_logs 透传（不被丢弃、不被字符串化）
+    const invokeTool = createRestBridgeTool(specOf('invoke_command'), {
+      getClient: async () => client,
+    });
+    await invokeTool.execute(
+      {
+        command: 'greet',
+        args: { name: 'x' },
+        timeout_ms: 120_000,
+        with_logs: true,
+      },
+      {} as never,
+    );
+    expect(calls[0]?.name).toBe('invoke_command');
+    expect(calls[0]?.args).toEqual({
+      command: 'greet',
+      args: { name: 'x' },
+      timeout_ms: 120_000,
+      with_logs: true,
+    });
+
+    // wait_for:condition=log + level/fields/since_seq 透传（fields 为对象不字符串化）
+    const waitTool = createRestBridgeTool(specOf('wait_for'), {
+      getClient: async () => client,
+    });
+    await waitTool.execute(
+      {
+        condition: 'log',
+        value: 'pipeline_run',
+        level: 'warn',
+        fields: { run_type: 'foreground' },
+        since_seq: 42,
+      },
+      {} as never,
+    );
+    expect(calls[1]?.name).toBe('wait_for');
+    expect(calls[1]?.args).toEqual({
+      condition: 'log',
+      value: 'pipeline_run',
+      level: 'warn',
+      fields: { run_type: 'foreground' },
+      since_seq: 42,
+    });
+
+    // find_elements:title_attr + 0.10.3 四新参透传
+    const findTool = createRestBridgeTool(specOf('find_elements'), {
+      getClient: async () => client,
+    });
+    await findTool.execute(
+      {
+        title_attr: '保存',
+        attribute: 'data-role',
+        attribute_value: 'primary',
+        text_exact: true,
+        include_hidden: true,
+      },
+      {} as never,
+    );
+    expect(calls[2]?.name).toBe('find_elements');
+    expect(calls[2]?.args).toEqual({
+      title_attr: '保存',
+      attribute: 'data-role',
+      attribute_value: 'primary',
+      text_exact: true,
+      include_hidden: true,
+    });
+  });
 });
