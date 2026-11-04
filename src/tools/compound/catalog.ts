@@ -50,6 +50,35 @@ const STRARR = (description: string) => ({
   description,
 });
 
+/**
+ * explain 的 webview_label。
+ *
+ * [文档] 服务端 0.10.2 的 `ExplainParams.webview_label` 确实存在
+ * （源码 `introspection_params.rs:166-168`，别名 `window`，缺省 main 窗口）；
+ * 0.8.8 的 ExplainParams 只有 action + seconds，serde 未开启
+ * `deny_unknown_fields`，故传入被静默忽略、不报错
+ * （[INFERENCE] 待批四 4/6 活体证实）。
+ */
+const WEBVIEW_LABEL_EXPLAIN = STR(
+  '目标 webview 标签（缺省 main 窗口）。[文档] 服务端 0.10.2 起支持' +
+    '（ExplainParams.webview_label，别名 window）；0.8.8 服务端无此字段、' +
+    '传入被忽略且不报错（[INFERENCE] 待批四 4/6 活体证实）',
+);
+
+/**
+ * fault 的 webview_label。
+ *
+ * [文档] 0.10.x fallback schema 口径含该字段；但服务端 0.10.2 的
+ * `FaultParams`（源码 `introspection_params.rs:119-142`）**未定义**
+ * webview_label，故当前传入会被忽略、不改变故障规则作用域
+ * （[INFERENCE] 待批四 4/6 活体证实后定去留）。
+ */
+const WEBVIEW_LABEL_FAULT = STR(
+  '目标 webview 标签（对齐 0.10.x fallback schema 口径）。[文档] 服务端 ' +
+    '0.10.2 的 FaultParams 未定义该字段，传入会被忽略、不改变故障规则的' +
+    '作用域（[INFERENCE] 待批四 4/6 活体证实后定去留）',
+);
+
 /** action 参数（每个复合工具的公共必填头，枚举值见各规格）。 */
 const ACTION = (tool: string, values: readonly string[]) =>
   ENUM(`${tool} 要执行的子动作`, values, true);
@@ -107,6 +136,7 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       seconds: NUM(
         '回看秒数：summary 默认 30，last_action 默认 5，diff 默认 10',
       ),
+      webview_label: WEBVIEW_LABEL_EXPLAIN,
     },
   },
   {
@@ -128,6 +158,7 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
         'corrupt',
       ]),
       max_triggers: NUM('规则最多触发次数；0 或省略 = 不限'),
+      webview_label: WEBVIEW_LABEL_FAULT,
     },
   },
   {

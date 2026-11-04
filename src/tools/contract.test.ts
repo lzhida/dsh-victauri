@@ -157,4 +157,36 @@ describe('dsh-victauri 工具面契约', () => {
       );
     }
   });
+
+  it('compound 的 explain/fault 暴露 webview_label 参数且标注服务端版本口径', () => {
+    // ParameterPropertySpec 是联合类型，这里只取字符串型节点的 type/description
+    const prop = (
+      spec: (typeof COMPOUND_TOOL_SPECS)[number],
+      name: string,
+    ): { type?: string; description?: string } | undefined =>
+      spec.parameters[name] as
+        { type?: string; description?: string } | undefined;
+
+    const explain = COMPOUND_TOOL_SPECS.find((s) => s.name === 'explain');
+    const fault = COMPOUND_TOOL_SPECS.find((s) => s.name === 'fault');
+    // explain：服务端 0.10.2 起支持（ExplainParams.webview_label，别名 window）
+    expect(prop(explain!, 'webview_label')?.type).toBe('string');
+    expect(prop(explain!, 'webview_label')?.description).toContain('0.10.2');
+    // fault：0.10.x fallback schema 口径含该字段，但服务端 FaultParams 未定义
+    expect(prop(fault!, 'webview_label')?.type).toBe('string');
+    expect(prop(fault!, 'webview_label')?.description).toContain('FaultParams');
+    // 其余 compound 工具的 webview_label 口径不变（通用说明文案）
+    for (const spec of COMPOUND_TOOL_SPECS) {
+      if (spec.name === 'explain' || spec.name === 'fault') {
+        continue;
+      }
+      const label = prop(spec, 'webview_label');
+      if (label === undefined) {
+        continue;
+      }
+      expect(label.description, `${spec.name}.webview_label`).toContain(
+        '目标 webview 标签',
+      );
+    }
+  });
 });
