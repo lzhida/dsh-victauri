@@ -62,7 +62,7 @@
 ## 三、结论
 
 - 本卡范围内的问题已全部闭合，V1（typecheck / test 15 files 161 tests / lint / format:check）全绿。
-- 遗留 5 项残余风险中：R2、R3、R4 为**可直接实现的缺口**（已按父卡授权建 todo 卡并当场执行）；
+- 遗留 5 项残余风险中：R2、R3、R4 为**可直接实现的缺口**（归入六面差距清单，在父卡「按差距建卡」阶段建 todo 卡并当场执行）；
   R1、R5 为**需上游能力或架构决策的评估类**（归入 backlog，未授权执行）。
 - 无「伪造通过」：所有结论均以本机 cargo registry 的 0.8.8 / 0.10.2 crate 源码行号或 0.10.3 官方文档行号为准；
   本机无活体 Tauri app（`mcp__victauri__get_plugin_info` 报 backend not reachable），故 [实测] 结论均沿用仓库内既有 0.8.8 记录。
