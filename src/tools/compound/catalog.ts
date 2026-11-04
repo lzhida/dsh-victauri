@@ -19,6 +19,7 @@ import type { ParameterPropertySpec } from '@deepseek-ai/dsh-tools';
 
 import { BOOL, INT, STR, WEBVIEW } from '../standalone/catalog.ts';
 import type { RestToolSpec } from '../standalone/catalog.ts';
+import { JSON_VALUE } from '../standalone/json-value.ts';
 
 /** enum 参数辅助（复合工具的 action 与子级枚举）。 */
 const ENUM = (
@@ -372,13 +373,16 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
     title: '浏览器存储与 Cookie',
     description:
       '存储操作：get 读 localStorage/sessionStorage（storage_type 选，默认 local）；' +
-      'set 写（value JSON 序列化）；delete 删键；get_cookies 取全部 Cookie。' +
+      'set 写（value 为任意 JSON 值，服务端按 JSON 序列化后写入）；delete 删键；' +
+      'get_cookies 取全部 Cookie。' +
       'set/delete 受隐私控制约束。 [桥]',
     parameters: {
       action: ACTION('storage', ['get', 'set', 'delete', 'get_cookies']),
       key: STR('(get/set/delete) 存储键'),
       storage_type: ENUM('存储类型', ['local', 'session']),
-      value: STR('(set) 要存的值（JSON 序列化）'),
+      value: JSON_VALUE(
+        '(set) 要存的值(任意 JSON 值:字符串/数值/布尔/null/数组/对象,原样透传;服务端按 JSON 序列化后写入)',
+      ),
       webview_label: WEBVIEW,
     },
   },

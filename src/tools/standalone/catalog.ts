@@ -15,6 +15,8 @@
  */
 import type { ParameterSchemaSpec } from '@deepseek-ai/dsh-tools';
 
+import { JSON_VALUE } from './json-value.ts';
+
 /** 单个 standalone 工具的静态规格。 */
 export interface RestToolSpec {
   /** victauri REST 工具名（dsh 工具名 = `victauri_` + 本值）。 */
@@ -76,15 +78,18 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     description:
       '在 webview 里求值 JS 表达式并对结果做语义断言。' +
       '必填 expression（JS 表达式）与 condition（equals/not_equals/contains/greater_than/less_than/truthy/falsy/exists/type_is）；' +
-      'expected 为条件期望值（truthy/falsy/exists 免）；label 人类可读断言名。' +
-      'schema 来源：[实测 0.8.8 缺参报 missing field `expression`] + [文档 condition 枚举]。',
+      'expected 为条件期望值（任意 JSON 值：字符串/数值/布尔/null/数组/对象；truthy/falsy/exists 免）；' +
+      'label 人类可读断言名。' +
+      'schema 来源：[实测 0.8.8 缺参报 missing field `expression`] + [文档 condition 枚举] + [服务端 expected 为 serde_json::Value]。',
     parameters: {
       expression: STR('在 webview 求值的 JS 表达式 [实测必填]', true),
       condition: STR(
         '断言条件:equals|not_equals|contains|greater_than|less_than|truthy|falsy|exists|type_is [文档]',
         true,
       ),
-      expected: STR('条件期望值;truthy/falsy/exists 可省 [文档]'),
+      expected: JSON_VALUE(
+        '条件期望值(任意 JSON 值:字符串/数值/布尔/null/数组/对象,原样透传不字符串化);truthy/falsy/exists 可省 [文档]',
+      ),
       label: STR('人类可读断言名(报告用) [文档]'),
       webview_label: WEBVIEW,
     },
@@ -317,7 +322,8 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     description:
       '按固定间隔轮询直到条件满足或超时。必填 condition:text|text_gone|selector|selector_gone|url|' +
       'ipc_idle|network_idle|expression|event;配套 value/expected/poll_ms(默认 200)/timeout_ms(默认 10000)/' +
-      'since_ms(默认 2000, event 回看窗口)。schema 来源：[实测 0.8.8 报 missing field `condition`] + [文档]。',
+      'since_ms(默认 2000, event 回看窗口)。expected 为任意 JSON 值(原样透传不字符串化)。' +
+      'schema 来源：[实测 0.8.8 报 missing field `condition`] + [文档]。',
     parameters: {
       condition: STR(
         '等待条件:text|text_gone|selector|selector_gone|url|ipc_idle|network_idle|expression|event [实测必填]',
@@ -326,7 +332,9 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
       value: STR(
         '条件值:文本/CSS 选择器/URL 子串/JS 表达式/Tauri 事件名 [文档]',
       ),
-      expected: STR('条件期望 JSON 值;缺省任意真值 [文档]'),
+      expected: JSON_VALUE(
+        '条件期望值(任意 JSON 值:字符串/数值/布尔/null/数组/对象,原样透传不字符串化);缺省任意真值 [文档]',
+      ),
       poll_ms: INT('轮询间隔毫秒,默认 200 [文档]'),
       timeout_ms: INT('超时毫秒,默认 10000 [文档]'),
       since_ms: INT('event 条件回看窗口毫秒,默认 2000 [文档]'),

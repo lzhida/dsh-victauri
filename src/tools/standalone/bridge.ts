@@ -4,6 +4,9 @@
  * 通用行为：
  * - 别名归一：eval_js(expression→code)、query_db(sql→query)——0.8.8 实测参数名优先，
  *   文档命名兼容（两者都给时以实测名为准）；
+ * - JSON 值透传：入参收敛为纯 JSON 值（isJsonValue 守卫）后**原样**发送，
+ *   type:'json' 的参数（assert_semantic.expected / wait_for.expected /
+ *   storage.value）数值、对象、数组、null 均不被字符串化；
  * - 图像通道：结果中的 {data,mimeType} 形态图像值（顶层对象或 REST 多块数组，
  *   覆盖 screenshot / trace frames / animation scrub filmstrip）在 renderJson
  *   截断之前统一落盘 %TEMP%\dsh-victauri\ 返回路径，落盘失败回退原文并保留错误；
@@ -18,6 +21,7 @@ import { VictauriError, isVictauriError } from '../../errors.ts';
 import type { JsonValue } from '../../json.ts';
 import { normalizeImageResult, saveImage } from './image.ts';
 import type { RestToolSpec } from './catalog.ts';
+import { toJsonArgs } from './json-value.ts';
 import { resolveRequestBudgetMs } from './timeout.ts';
 import { renderJson } from './render.ts';
 
@@ -100,11 +104,11 @@ export function createRestBridgeTool(
     execute: async (args, exec) => {
       void exec;
       try {
-        // InferValue 的 optional 属性可能为 undefined:过滤后再透传
-        const callArgs: Record<string, JsonValue> = {};
-        for (const [key, val] of Object.entries(args)) {
-          if (val !== undefined) callArgs[key] = val;
-        }
+        // 入参收敛为纯 JSON 值（丢弃 undefined 与非 JSON 值）后**原样透传**：
+        // 任意 JSON 值参数（expected / storage.value）不会被字符串化
+        const callArgs: Record<string, JsonValue> = toJsonArgs(
+          args as unknown as Record<string, unknown>,
+        );
         // 别名归一:实测名优先,文档别名兜底;别名键总是移除(服务端拒未知字段)
         if (alias) {
           const [primary, aliasKey] = alias;
