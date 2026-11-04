@@ -118,13 +118,27 @@ const SPEC_TABLE = {
     notes: [
       {
         text:
-          '长驻子命令:不会自行退出,必须传 timeout_ms;超时会 kill 子进程并返回 ' +
-          'timed_out=true、partial=true',
+          '上游定位:给只会说 stdio 的第三方 MCP 宿主用的 stdio→HTTP 代理' +
+          '(Claude Code 等);上游 CLI 不提供 --http/--port 等服务端选项,' +
+          'HTTP/MCP 端点实际运行在 victauri app 进程内(/mcp、/api/tools、' +
+          '/info、/health)',
       },
       {
         text:
-          'bridge 是 stdio MCP 代理,本通道只能等它退出,拿不到 stdio 交互会话,' +
-          '仅适合短时诊断',
+          '本插件已有 REST 主通道(victauri_* 工具)直连同一 app 的同一套工具,' +
+          '工具调用勿绕道 bridge;bridge 在本通道仅适合诊断性短时使用' +
+          '(如确认握手输出)',
+      },
+      {
+        text:
+          '长驻子命令:不会自行退出,必须传 timeout_ms;超时会 kill 子进程并返回 ' +
+          'timed_out=true、partial=true,stdout/stderr 为超时前已捕获的部分输出',
+      },
+      {
+        text:
+          'bridge 是 stdio MCP 代理,本通道(spawn-等退出模型)只能等它退出,' +
+          '拿不到 stdio 交互会话;跨 app 重启自动重连、会话保持等能力只存在于' +
+          '上游 CLI 侧的长驻 bridge 进程,本通道没有',
       },
     ],
   },

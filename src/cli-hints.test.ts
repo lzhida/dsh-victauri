@@ -180,3 +180,45 @@ describe('dsh-victauri watch 子命令口径（上游真实语义 + 本通道边
     expect(hits).toEqual([]);
   });
 });
+
+describe('dsh-victauri bridge 子命令口径（上游定位 + 本通道边界）', () => {
+  it('bridge notes 说明上游定位:第三方 MCP 宿主的 stdio→HTTP 代理,HTTP 端点在 app 进程内', () => {
+    const notes = buildActionHint('bridge', '0.8.8').notes.join(' ');
+    expect(notes).toContain('第三方 MCP 宿主');
+    expect(notes).toContain('stdio→HTTP');
+    expect(notes).toContain('--http');
+    expect(notes).toContain('app 进程');
+  });
+
+  it('bridge notes 提示勿绕 CLI:已有 REST 主通道,工具调用走 victauri_*', () => {
+    const notes = buildActionHint('bridge', '0.8.8').notes.join(' ');
+    expect(notes).toContain('REST 主通道');
+    expect(notes).toContain('victauri_*');
+    expect(notes).toContain('诊断');
+  });
+
+  it('bridge notes 明确仅诊断性短时使用:拿不到 stdio 交互会话,自动重连只在 CLI 侧', () => {
+    const notes = buildActionHint('bridge', '0.8.8').notes.join(' ');
+    expect(notes).toContain('拿不到 stdio 交互会话');
+    expect(notes).toContain('自动重连');
+  });
+
+  it('bridge notes 保留长驻/超时/partial 口径', () => {
+    const notes = buildActionHint('bridge', '0.8.8').notes.join(' ');
+    expect(notes).toContain('timeout_ms');
+    expect(notes).toContain('timed_out=true');
+    expect(notes).toContain('partial=true');
+    expect(notes).toContain('部分输出');
+  });
+
+  it('bridge hints 不出现 --json 字面量(0.8.8 全量 hints 护栏),文档三处口径关键词一致', () => {
+    const hints = buildActionHints('0.8.8');
+    expect(JSON.stringify(hints.bridge)).not.toContain('--json');
+    const docs = readFileSync(join(REPO_ROOT, 'docs/TOOLS.md'), 'utf8');
+    const readme = readFileSync(join(REPO_ROOT, 'README.md'), 'utf8');
+    for (const text of [docs, readme]) {
+      expect(text).toContain('第三方 MCP 宿主');
+      expect(text).toContain('诊断性短时');
+    }
+  });
+});

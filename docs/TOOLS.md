@@ -215,10 +215,46 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 ### 长驻子命令（watch / bridge）
 
 - `watch` / `bridge` **不会自行退出**，必须显式传 `timeout_ms`；
-- 超时会 kill 子进程，返回 `timed_out=true`、`partial=true`，
-  `stdout` / `stderr` 是**超时前已捕获的部分输出**；
-- 两者都标记 `interactive=false`：`bridge` 是 stdio MCP 代理，本通道（等退出模型）
-  拿不到 stdio 交互会话，只适合短时诊断。
+- 超时会 kill 子进程，返回 `timed_out=true`、`partial=true`，`stdout` /
+  `stderr` 是**超时前已捕获的部分输出**（不是完整结果，也不会续传）；
+- `partial=true` 有两个来源：① 超时强杀（`timed_out=true`）；② 单路输出超过
+  512KB 捕获上限（`src/cli.ts` 的 `MAX_STREAM_BYTES`），被截断的那一路末尾
+  追加 `[truncated]` 标记；
+- 模型侧可见文本再叠一层**预览截断**：取 `stderr || stdout`，头 3000 + 尾
+  3000、总上限 6000 字符（详见上文「渲染预览」）；全文仍在返回字段里；
+- 两者都标记 `interactive=false`：本通道是 **spawn-等退出模型**（不写 stdin、
+  等进程退出才返回），拿不到任何交互会话。
+
+### bridge 子命令（上游定位与本通道边界）
+
+- **上游定位**：`victauri bridge` 是给只会说 stdio 的**第三方 MCP 宿主**用的
+  stdio→HTTP 代理（上游文档原话 "Run as a stdio-to-HTTP MCP bridge for
+  Claude Code and other MCP hosts"）；
+- **HTTP 端点不在 CLI 进程里**：上游 CLI 无 `--http` / `--port` /
+  `--transport` 等服务端选项；`/mcp`、`/api/tools`、`/info`、`/health`
+  端点实际运行在 **victauri app 进程内**（插件随 app 启动的内嵌 HTTP 服务）；
+- **勿经 CLI 桥接工具调用**：本插件已有 REST 主通道（`/health`、`/info`、
+  `GET /api/tools`、`POST /api/tools/{tool_name}`）直连同一 app 的同一套
+  工具（即全部 `victauri_*` 工具）——工具调用走主通道即可，`bridge` 对本
+  插件零增量；
+- **仅诊断性短时使用**：本通道（spawn-等退出模型）拿不到 stdio 交互会话；
+  跨 app 重启自动重连、会话保持等能力只存在于上游 CLI 侧的**长驻 bridge
+  进程**，本通道没有——`bridge` 在本工具里只适合短时诊断（如确认握手输出）；
+- **证据强度**：上游行为依据 victauri-cli / victauri-plugin 0.10.3 源码与
+  文档（[INFERENCE]，本机未安装 0.10.3；本机 0.8.8 实测 `bridge --help`
+  与已废弃的 `--wait` no-op）。
+
+### 如何近似 watch 的多轮效果
+
+- 本通道拿不到逐轮增量（超时后只有一次部分输出，见上文），想要「多轮跑测」
+  的效果，二选一：
+  1. **反复调用一次性子命令**：`victauri_cli(action='test')` 或
+     `victauri_cli(action='coverage')`——两者都是一次性退出型（`coverage`
+     需活体 app，报告走 stderr）；
+  2. **直接走 REST 主通道**：用 `victauri_*` 工具（同一 app、同一套工具、
+     结构化返回，等价且更强）；
+- 上游 `watch` 本身没有 JSON / `--once` / `--follow` 模式（见上文 watch
+  小节），本通道也**不存在**逐轮推送或订阅能力——勿按增量流语义调用。
 
 ### watch 子命令（上游语义与本通道边界）
 
