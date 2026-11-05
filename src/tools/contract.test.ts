@@ -483,4 +483,59 @@ describe('dsh-victauri 工具面契约', () => {
     expect(faultLabel?.description).toContain('均未定义该字段');
     expect(faultLabel?.description).toContain('不改变故障规则的作用域');
   });
+
+  it('批九 1/3 上游口径纠偏:css/selector 主别名方向与 points 默认值矛盾加注', () => {
+    const findElements = REST_TOOL_SPECS.find(
+      (s) => s.name === 'find_elements',
+    )!;
+    const css = findElements.parameters['css'] as { description?: string };
+    const selector = findElements.parameters['selector'] as {
+      description?: string;
+    };
+
+    // L-5：上游「文档层」与「源码/schema 层」对 css/selector 的主名长期不一致
+    // （≥0.8.8 起并存：文档一律 selector 主名，源码一律 css 主名），
+    // 两键上游都接受、语义等价，故描述必须分层写清，避免把本地归一说成上游行为，
+    // 也不能写成「0.10.2 及以前相反」这种并不存在的版本翻转。
+    for (const [key, desc] of [
+      ['css', css?.description ?? ''],
+      ['selector', selector?.description ?? ''],
+    ] as const) {
+      expect(desc, `${key} 文档层口径`).toContain(
+        '上游文档口径 0.8.8–0.10.3 及 main 一律 selector 为主名、css 为别名',
+      );
+      expect(desc, `${key} 源码层口径`).toContain(
+        '上游源码/schema 口径一律 css 为主名、selector 为别名',
+      );
+      expect(desc, `${key} 两键等价`).toContain('两键上游均接受');
+      expect(desc, `${key} 两键等价`).toContain('语义等价');
+      expect(desc, `${key} 源码同传优先级`).toContain(
+        '同时传两键时 0.10.3 源码取 css',
+      );
+      expect(desc, `${key} 来源标注`).toMatch(
+        /\[文档 0\.10\.3\] \+ \[源码 0\.10\.3\]$/,
+      );
+      // 旧的写反口径与并不存在的版本翻转叙事不得残留
+      expect(desc, `${key} 旧口径`).not.toContain('也接受 selector 别名');
+      expect(desc, `${key} 旧口径`).not.toContain('(css 别名)');
+      expect(desc, `${key} 旧叙事`).not.toContain('0.10.2 及以前相反');
+    }
+
+    // selector 键额外说明：两键同传时被忽略的是 selector
+    expect(selector?.description).toContain('此时 selector 被忽略');
+
+    // L-7：上游 markdown 文档写 points 默认 6，上游 schema doc-comment 与实现写默认 20，
+    // 两者自相矛盾；插件跟 schema/实现口径（20），描述必须写明该矛盾与取舍依据。
+    const animation = COMPOUND_TOOL_SPECS.find((s) => s.name === 'animation')!;
+    const points = animation.parameters['points'] as { description?: string };
+    expect(points?.description).toContain('默认 20');
+    expect(points?.description).toContain('2..120');
+    expect(points?.description).toContain(
+      '上游 0.10.3 markdown 文档写 default 6',
+    );
+    expect(points?.description).toContain('自相矛盾');
+    expect(points?.description).toContain('以 schema 为准');
+    expect(points?.description).toContain('[源码 0.10.2]');
+    expect(points?.description).toContain('[文档 0.10.3]');
+  });
 });

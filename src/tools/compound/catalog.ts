@@ -102,7 +102,9 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       capture: BOOL('(scrub) 为 true 时每进度点原生截图并返回 filmstrip PNG'),
       clear: BOOL('(sample) 为 true 时调用后清空已录制会话'),
       cols: INT('(scrub) filmstrip 网格列数，默认 ~sqrt(n)'),
-      points: INT('(scrub) 等分进度点数，默认 20，夹到 2..120'),
+      points: INT(
+        '(scrub) 等分进度点数，默认 20，夹到 2..120（上游 schema 口径且为实现值；上游 0.10.3 markdown 文档写 default 6，两者自相矛盾，以 schema 为准） [源码 0.10.2] + [文档 0.10.3]',
+      ),
       record: BOOL('(sample) true 布防 rAF 录制；false 收读实测曲线'),
       restore: BOOL('(scrub) 默认 true 恢复动画；false 停在终点'),
       selector: STR('目标元素 CSS 选择器；list 省略 = 全部运行中动画'),

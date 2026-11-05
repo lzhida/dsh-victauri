@@ -176,7 +176,11 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
       'schema 来源：[文档 0.10.3 参数表] + [CHANGELOG 0.10.3 attribute/attribute_value/text_exact/include_hidden] + [实测 0.8.8 空参成功(返回数组)]。',
     parameters: {
       alt: STR('alt 文本子串匹配(忽略大小写) [文档]'),
-      css: STR('CSS 选择器(也接受 selector 别名) [文档]'),
+      css: STR(
+        'CSS 选择器(上游文档口径 0.8.8–0.10.3 及 main 一律 selector 为主名、css 为别名;' +
+          '上游源码/schema 口径一律 css 为主名、selector 为别名;两键上游均接受、语义等价;' +
+          '同时传两键时 0.10.3 源码取 css) [文档 0.10.3] + [源码 0.10.3]',
+      ),
       enabled: BOOL('按可用状态过滤 [文档]'),
       exact: BOOL('文本精确匹配(默认子串) [文档]'),
       label: STR('关联 label 文本匹配(按 label 找 input) [文档]'),
@@ -184,7 +188,11 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
       name: STR('可访问名(aria-label/title/placeholder)子串匹配 [文档]'),
       placeholder: STR('placeholder 文本匹配 [文档]'),
       role: STR('ARIA 角色精确匹配 [文档]'),
-      selector: STR('CSS 选择器(css 别名) [文档]'),
+      selector: STR(
+        'CSS 选择器(上游文档口径 0.8.8–0.10.3 及 main 一律 selector 为主名、css 为别名;' +
+          '上游源码/schema 口径一律 css 为主名、selector 为别名;两键上游均接受、语义等价;' +
+          '同时传两键时 0.10.3 源码取 css,此时 selector 被忽略) [文档 0.10.3] + [源码 0.10.3]',
+      ),
       tag: STR('HTML 标签名,如 button/input [文档]'),
       test_id: STR('data-testid 属性值精确匹配 [文档]'),
       text: STR('文本内容子串匹配(忽略大小写) [文档]'),

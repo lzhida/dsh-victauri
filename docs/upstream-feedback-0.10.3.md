@@ -3,9 +3,12 @@
 > 用途：整理 dsh-victauri 插件在「schema 三源对齐」审查中发现的**上游文档/实现不一致**，
 > 形成可直接提交上游 issue 的反馈清单。措辞与格式沿用批四 4/6 上游反馈先例
 > （客观陈述差异 + 双侧证据行号 + 建议修法，不夹带本插件实现偏好）。
-> 证据来源：上游 tools-reference 文档（docs/src/tools-reference.md @ main，2026-11-05 抓取）、
-> 上游 CHANGELOG（CHANGELOG.md @ main）、cargo registry `victauri-plugin-0.10.2` 源码、
-> 本机活体 0.10.3 实例实测（demo-app，见 `pnpm smoke` 记录）。
+> 证据来源：上游 tools-reference 文档（docs/src/tools-reference.md @ main 与
+> @ v0.10.3，2026-11-05 抓取，落盘 `.agents/tmp/upstream-tools-reference-0.10.3.md`
+> ——该落盘副本与 upstream v0.10.3 tag 原文逐行一致，仅结尾多一个空行）、
+> 另比对 @ v0.10.2 与 @ v0.8.8 tag 的同名文档（用于确认历史口径是否发生过翻转）、
+> 上游 CHANGELOG（CHANGELOG.md @ main）、cargo registry `victauri-plugin-0.8.8`
+> / `0.10.2` / `0.10.3` 源码、本机活体 0.10.3 实例实测（demo-app，见 `pnpm smoke` 记录）。
 > 本文件只整理反馈材料，**不代表已提交上游 issue**（上游提交需用户另行裁决）。
 
 ## 一、文档参数表缺口（tools-reference.md）
@@ -38,7 +41,7 @@ less_than | truthy | falsy`；
 - **影响**：按文档实现客户端校验会**误拒**两个合法条件值；
 - **建议**：文档补齐 9 值枚举。
 
-## 二、源码注释与文档/行为不一致（低优先级）
+## 二、源码注释与文档/行为不一致
 
 ### 3. RouteBehavior::Fulfill 注释仍写 "XHR falls back to delay"
 
@@ -62,17 +65,6 @@ less_than | truthy | falsy`；
   `Tauri-Response: ok` 头、block 转 postMessage 驻留等）；
 - **影响**：仅影响仍驻留 0.8.8 的用户；无行动建议，仅备忘。
 
-## 三、行为复核确认无误的项（供上游确认，非缺口）
-
-- `window.resize` / `window.move_to` 的「读回值 + `requested` + `settled:false`
-  （约 500ms）」语义与本插件文档一致（tools-reference.md:542-543）；
-- `storage.get_cookies` 仅返回非 httpOnly cookie（经 `document.cookie` 读取，
-  0.10.2 `js_bridge.rs:1969-1970` 与文档 tools-reference.md:568 一致）；
-- `explain.webview_label` 自 0.10.2 起 `ExplainParams` 支持（别名 `window`）；
-  `fault.webview_label` 在 0.10.2 `FaultParams` 未定义、传入被静默忽略
-  （全 crate 无 `deny_unknown_fields`）——与 0.10.x fallback schema 工具清单
-  口径存在轻微出入，见下第四节。
-
 ### 4b. fault 工具 fallback schema 与实际参数结构不一致
 
 - **现象**：0.10.x 的 MCP `tools/list`（fallback schema）给 `fault` 工具声明了
@@ -84,6 +76,57 @@ less_than | truthy | falsy`；
 - **建议**：二选一——`FaultParams` 真正实现 `webview_label`（故障注入按窗口
   限定），或从 fallback schema 移除该参数声明，避免静默无效参数。
 
+### 5. find_elements 的 css/selector 主别名在文档与源码/schema 之间长期不一致（≥0.8.8）
+
+- **现象**：0.10.3 markdown 文档的 `find_elements` 参数表
+  （tools-reference.md:157）只列 `selector`，并把 `css` 写成它的别名
+  （「CSS selector (alias: `css`)」），即**文档口径是 selector 主名、css 别名**；
+- **对照（文档层从未翻转）**：v0.10.2 的 tools-reference.md:157 与 v0.8.8 的
+  `:136` 与 0.10.3 **是同一句话**（同为 selector 主名、css 别名）——所以这不是
+  「0.10.3 文档改了、源码没跟」，而是**文档层与源码层自 0.8.8 起长期并存的分歧**；
+- **对照（源码层一直是 css 主名）**：0.8.8 `other_params.rs:147-150`、
+  0.10.2 `:173-176`、0.10.3 `:181-184` 的源码注释均为「`css` — CSS selector to
+  match (also accepts `selector` as an alias)」与「`selector` — Alias for
+  `css`」，即**源码/schema 口径是 css 主名、selector 别名**；且 0.10.3
+  `src/mcp/mod.rs:726` 的取值是
+  `params.css.as_ref().or(params.selector.as_ref())`——两键同时传入时 **css 优先**；
+- **影响**：
+  1. 按 markdown 文档实现「selector 主名」的集成方，在同时传两键时与上游实际
+     取值顺序相反（传入的 selector 会被忽略）；文档读者也无法得知该优先级；
+  2. MCP `tools/list` 的 fallback schema 由源码注释生成，因此**工具签名本身
+     呈现的是 css 主名**，与 markdown 文档呈现的 selector 主名互相矛盾，
+     仅看其中一侧的调用方会做出相反假设；
+- **建议**：二选一——统一到 selector 主名（与 ≥0.8.8 的文档一致，同时更新源码
+  注释、fallback schema 与取值顺序），或在文档参数表中补注「源码仍以 css 为主
+  字段，同传两键时 css 优先、selector 被忽略」。
+
+### 6. animation.scrub 的 points 默认值文档与 schema/实现不一致
+
+- **现象**：0.10.3 markdown 文档（tools-reference.md:1012）的 `points` 参数写
+  「Number of evenly-spaced seek points for `scrub` (default: 6)」，示例
+  （:1025）也用 6；
+- **对照**：`victauri-plugin-0.10.2` 的 `src/mcp/compound_params.rs:767-768` 与
+  `victauri-plugin-0.10.3` 的 `:771-772` 的 `AnimationParams.points` doc-comment
+  均为「(`scrub`) Number of evenly-spaced progress points to sample. **Default
+  20, clamped to 2..=120**」——**schema 口径是默认 20**，与文档的 6 矛盾；
+- **实现级佐证**：0.10.3 `src/mcp/mod.rs:3551` 为
+  `let points = params.points.unwrap_or(20).clamp(2, 120);`——20 是**实现值**；
+  0.8.8 与 0.10.2 的实现同样是 20，文档的 6 属早期版本遗留口径；
+- **影响**：按文档估算出点数/耗时的调用方会低估采样密度（6 vs 20），
+  生成的 scrub 采样点数量与预期不符；
+- **建议**：统一两处口径（schema 与实现的 20 是实现值，建议把文档改为 20）。
+
+## 三、行为复核确认无误的项（供上游确认，非缺口）
+
+- `window.resize` / `window.move_to` 的「读回值 + `requested` + `settled:false`
+  （约 500ms）」语义与本插件文档一致（tools-reference.md:542-543）；
+- `storage.get_cookies` 仅返回非 httpOnly cookie（经 `document.cookie` 读取，
+  0.10.2 `js_bridge.rs:1969-1970` 与文档 tools-reference.md:568 一致）；
+- `explain.webview_label` 自 0.10.2 起 `ExplainParams` 支持（别名 `window`）；
+  `fault.webview_label` 在 0.10.2 `FaultParams` 未定义、传入被静默忽略
+  （全 crate 无 `deny_unknown_fields`）——与 0.10.x fallback schema 工具清单
+  口径存在轻微出入，见上节第 4b 条。
+
 ## 四、本插件已按以上口径自纠的项（无需上游动作，备忘）
 
 - `verify_state` 补 `backend_args` 参数（上游 doc:234 有、本插件此前缺）；
@@ -91,8 +134,15 @@ less_than | truthy | falsy`；
   `compound_params.rs:737-746` 无 Clear，文档 doc:1014 只列 list/scrub/sample）；
 - `wait_for.condition` 扩为 10 值闭集（含 0.10.2 新增 `log`）；
 - `invoke_command` 补 `timeout_ms` / `with_logs`；`find_elements` 补
-  `title_attr` + 四个 CHANGELOG 新参；`logs`/`window` 动作枚举对齐 0.10.3。
+  `title_attr` + 四个 CHANGELOG 新参；`logs`/`window` 动作枚举对齐 0.10.3；
+- `find_elements` 的 `css` / `selector` 参数描述按上游双层口径改写：文档层
+  （≥0.8.8 起 selector 主名、css 别名）与源码/schema 层（css 主名、selector
+  别名）分开陈述，注明两键等价、以及同传两键时 0.10.3 源码取 css（对 selector
+  键即被忽略）——对应上文第 5 条；
+- `animation.points` 描述标注上游文档 default 6 与 schema/实现 default 20 的
+  矛盾，保持 schema 口径 20 并说明取舍依据（对应上文第 6 条）。
 
 ---
 
-_生成：dsh-victauri 批六 4/4（t-mw1vb6fs-mr2mul），2026-11-05。上游 issue 提交与否由用户裁决。_
+_生成：dsh-victauri 批六 4/4（t-mw1vb6fs-mr2mul），2026-11-05；第 5、6 条与本插件
+描述纠偏由批九 1/3（t-mw2vu3ia-1nycp9）补充。上游 issue 提交与否由用户裁决。_
