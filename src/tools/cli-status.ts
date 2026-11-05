@@ -51,7 +51,17 @@ const DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD';
 /** 探测状态：CLI 可用 / 未找到 / 其他失败。 */
 export type CliStatusState = 'available' | 'not_found' | 'error';
 
-/** 探测失败时的结构化错误（kind 可判别，hint 含安装指引）。 */
+/**
+ * 探测失败时的结构化错误（kind 可判别，hint 含安装指引）。
+ *
+ * `kind` 是**CLI 探测域自有词汇表**（not_found / cli-error / timeout），
+ * 描述的是「victauri CLI 本身装没装、跑不跑得起来」，与
+ * `src/errors.ts` 的 REST 桥接错误信封词汇表（no-instance / http-error /
+ * tool-error / timeout …）**不互通、不可互相比较**。
+ *
+ * 例：本表的 `not_found`（CLI 没找到）与 REST 桥接域的 `no-instance`
+ * （找不到活的 victauri 实例）是两回事，名字相近但语义不同。
+ */
 export type CliStatusError = {
   kind: 'not_found' | 'cli-error' | 'timeout';
   message: string;

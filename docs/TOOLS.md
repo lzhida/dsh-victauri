@@ -427,6 +427,28 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 - 只读：仅调用 `GET /api/tools`，不触发任何服务端工具执行；
 - 查询失败返回结构化 `error`（`kind`/`hint` 指向 `victauri check` 自检），不抛栈、不吞错。
 
+## 错误 `kind` 的三套词汇表（语义域不同，不可互相比较）
+
+插件里有三处会返回带 `kind` 的结构化错误。它们的 `kind` **各自是一套封闭词汇表，
+语义域不同、名字不可互相等价理解**——看到名字相近就当成同一含义会误判。
+
+| 词汇表            | 位置                                                | 取值                                                                                                               | 语义域                                                                                              | 消费者                                                               |
+| ----------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| REST 桥接错误信封 | `src/errors.ts` 的 `VictauriErrorKind`              | `no-instance` / `instance-incomplete` / `no-live-instance` / `http-error` / `timeout` / `tool-error` / `cli-error` | **调用失败的原因**：找不到实例 / 实例残缺 / 实例不活 / HTTP 非 2xx / 超时 / 工具被拒 / CLI 拉起失败 | standalone 与 compound 全部工具的 `{error:{kind,message,hint}}` 信封 |
+| CLI 探测域        | `src/tools/cli-status.ts` 的 `CliStatusError.kind`  | `not_found` / `cli-error` / `timeout`                                                                              | **本机 `victauri` CLI 是否可用**：没找到可执行文件 / 拉起失败 / 探测超时                            | `victauri_cli_status` 工具的 `error` 字段                            |
+| 工具发现域        | `src/tools/tools-list.ts` 的 `ToolsListWarningKind` | `not_exposed` / `missing_on_server`                                                                                | **暴露面与服务端清单的差异**：服务端有而插件没暴露 / 插件暴露而服务端没有                           | `victauri_tools_list` 工具的 `warnings` 数组                         |
+
+易混对照（**仅作提醒，不是等价关系**）：
+
+- CLI 探测域的 `not_found` =「本机没装/没命中 `victauri` CLI」；
+  REST 桥接域的 `no-instance` =「discovery 里没有活着的 victauri 实例」——
+  后者与 CLI 装没装无关（CLI 没装时同样可能是 discovery 目录为空）。
+- CLI 探测域的 `cli-error` 与 REST 桥接域的 `cli-error` 同名，但前者是
+  「CLI 探测这一步失败」，后者是「插件尝试拉起 CLI 子进程失败」，
+  产生位置与排查方向都不同。
+- 工具发现域的两个取值描述的是**清单差异**，不是调用失败——
+  它们出现在 `warnings` 数组里而不是 `error` 字段里。
+
 ## 口径一致性
 
 四处同源：README「工具清单」= 本文件 = `catalog.ts` 头注释（standalone 20，

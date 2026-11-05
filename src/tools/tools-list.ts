@@ -37,7 +37,16 @@ export const TOOLS_LIST_TOOL_NAME = 'victauri_tools_list';
 /** 单条工具描述截断长度（include_descriptions=true 时生效）。 */
 export const TOOL_DESCRIPTION_MAX_CHARS = 200;
 
-/** 差异告警类别。 */
+/**
+ * 差异告警类别——**工具发现域自有词汇表**（not_exposed / missing_on_server），
+ * 描述的是「某个上游工具在本插件暴露面与服务端清单之间的差异」。
+ *
+ * 与另外两套词汇表**相互独立、不可互相比较**：
+ * - `src/errors.ts` 的 `VictauriErrorKind`——**REST 桥接错误信封**封闭词汇表，
+ *   描述调用失败的原因（no-instance / http-error / tool-error …）；
+ * - `src/tools/cli-status.ts` 的 `CliStatusError.kind`——**CLI 探测域**自有
+ *   词汇表（not_found / cli-error / timeout）。
+ */
 export type ToolsListWarningKind =
   /** 服务端提供、插件未暴露（插件版本落后于服务端）。 */
   | 'not_exposed'

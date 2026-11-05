@@ -9,6 +9,23 @@ export class VictauriError extends Error {
   }
 }
 
+/**
+ * REST 桥接错误信封的**封闭词汇表**（7 值，只此一处定义）。
+ *
+ * 语义域：本表只描述「REST 桥接调用 victauri 时」的失败原因，会出现在工具返回的
+ * `{error:{kind,message,hint}}` 信封里（见 src/tools/standalone/bridge.ts）。
+ *
+ * 与另外两套词汇表**相互独立、不可互相比较**（名字相近但含义不同）：
+ * - `src/tools/cli-status.ts` 的 `CliStatusError.kind`
+ *   （not_found / cli-error / timeout）——**CLI 探测域**自有词汇表，
+ *   描述「victauri CLI 是否装好、能否跑起来」；
+ * - `src/tools/tools-list.ts` 的 warning `kind`
+ *   （not_exposed / missing_on_server）——**工具发现域**自有词汇表，
+ *   描述「某个上游工具是否被本插件暴露 / 服务端是否存在」。
+ *
+ * 例：cli 探测域的 `not_found` 表示「CLI 没找到」，与本表的 `no-instance`
+ * （找不到活的 victauri 实例）不是一回事，不可按名字等价理解。
+ */
 export type VictauriErrorKind =
   /** discovery 目录不存在或无候选实例 */
   | 'no-instance'

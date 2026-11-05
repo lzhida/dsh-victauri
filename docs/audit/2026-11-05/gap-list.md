@@ -49,6 +49,13 @@
 - 🟡 **M-1 kind 词汇表缺 auth/not-found/rate-limited/invalid-params**——src/errors.ts:12-26 仅 7 值；
   src/client.ts:106-112 把 400/401/403/404/429 同归 http-error 且丢弃 VictauriHttpError.status
   （errors.ts:34-47 实际持有 status）。
+  **【2026-11-05 归属澄清，批九 3/3】** M-1 与 backlog-A（t-mw2eut5k-6k1elc）的 S-1（上游工具级
+  失败裸错误、错误信封失效）/ S-2（客户端永不失效、401 不重发现）**同属错误信封与客户端语义
+  改造**：三者都要动 `src/client.ts` 与 `src/tools/standalone/bridge.ts`，并行实施会同文件双写。
+  故 **M-1 并入 backlog-A 的设计范围**（错误 kind 映射表本来就要在 backlog-A 出），
+  本轮**不实施**。另注：三套 kind 词汇表（REST 桥接 / CLI 探测 / 工具发现）的**语义域边界**
+  已在批九 3/3 补注释与文档（`docs/TOOLS.md` 新增「错误 kind 的三套词汇表」一节），
+  那是**说明性澄清**，不改变任何运行时取值，也不解决 M-1 本身。
 - 🟡 **M-2 {items} 数组包装仅 find_elements 一处说明**——实现 src/tools/standalone/bridge.ts:81-85
   对所有数组生效（实测 get_registry/logs/recording/trace/route/window/fault/animation 全产出
   {"items":[...]}）；上游 tools-reference.md:735 明写 logs 返回 bare array。相关 backlog 卡
@@ -60,6 +67,11 @@
 - 🟡 **M-6 上游正式别名未接**——window/window_label、checkpoint_label（上游 tools-reference 行 13/607）；
   插件别名表仅 eval_js/query_db 两条（src/tools/standalone/bridge.ts:47-52）。
 - 🟢 **L-1 cli_status 的 kind 词汇表与 errors.ts 不统一**——src/tools/cli-status.ts:55-59。
+  **【2026-11-05 澄清，批九 3/3】** 二者**语义域不同、不是同一层**：cli_status 的
+  not_found/cli-error/timeout 属「CLI 探测域」（CLI 装没装、跑不跑得起来），
+  errors.ts 的 7 值属「REST 桥接错误信封」（调用失败的原因）。二者不互通、不可按名字等价
+  比较。已补源码注释 + `docs/TOOLS.md` 新增「错误 kind 的三套词汇表」一节说明边界；
+  **不合并两套词汇表**（合并会丢失语义分层，且需改运行时取值）。
 - 🟢 **L-11 上游 REST 30s/2MiB deadline 表现为 http-error 而非 timeout**。
 
 ## 面 4：健壮性
@@ -85,6 +97,13 @@
 - 🟢 **L-3 wait_for 预算被 120s 硬夹**——src/tools/standalone/timeout.ts:17,30-52。
 - 🟢 **L-4 trace/introspect 固定 90s**——src/tools/compound/catalog.ts:270,494。
 - 🟢 **L-7 animation points 默认 20 与上游文档 6 不一致**——src/tools/compound/catalog.ts:98。
+  **【2026-11-05 改判，批九 3/3】** 本条**不是插件缺陷**：上游 markdown 文档写 default 6
+  （tools-reference.md:1012，示例 :1025 也用 6），而上游 **schema doc-comment 与实现**
+  写 20——0.10.2 `compound_params.rs:767-768` / 0.10.3 `:771-772` 为「Default 20,
+  clamped to 2..=120」，0.10.3 `mod.rs:3551` 实现为 `unwrap_or(20).clamp(2, 120)`。
+  插件跟的是 schema/实现口径（20），**改成 6 反而错**。插件描述已加注该矛盾与取舍依据
+  （批九 1/3，提交 71112e7）；上游文档/实现矛盾已写入 `docs/upstream-feedback-0.10.3.md`
+  第 6 条。本条从「插件待修项」改判为「上游口径矛盾，已在上游反馈材料登记」。
 - 🟢 **L-9 CLI stdout 上限按字符计（非字节）可略超 512KB**——src/cli.ts:10,78-91。
 - 🟢 **L-10 图像落盘无字节上限**——src/tools/standalone/image.ts:26,82-97。
 
@@ -115,6 +134,16 @@
 - 🟢 **T-6 route 0.10.3 细化口径未覆盖**——regex 重复组 add 时被拒、mock body 不可读时 add 拒绝
   （mock_unreadable）、宽 pattern 给 ipc_warning（批六 2/4 V2-A 低-10）。
 - 🟢 **L-5 find_elements 的 css/selector 双声明不归一**——src/tools/standalone/catalog.ts:178,186。
+  **【2026-11-05 勘误，批九 3/3】** 本条原描述「主别名方向写反」不准确，真实分歧是
+  **上游文档层 vs 上游源码/schema 层自 0.8.8 起长期并存**：
+  - 文档层（v0.8.8 `tools-reference.md:136` / v0.10.2 `:157` / v0.10.3 `:157`）**一致**
+    为「selector 主名、css 为别名」——文档层从未翻转；
+  - 源码/schema 层（0.8.8 `other_params.rs:147-150` / 0.10.2 `:173-176` / 0.10.3 `:181-184`）
+    **一致**为「css 主名、selector 别名」；0.10.3 `mod.rs:726` 取值
+    `params.css.as_ref().or(params.selector.as_ref())` → 同传两键时 **css 优先**。
+    插件描述已按双层口径改写（批九 1/3，提交 71112e7），两键上游均接受、语义等价，
+    插件**不做**本地归一（无权威依据选定其一）。上游长期错位已写入
+    `docs/upstream-feedback-0.10.3.md` 第 5 条。
 - ✅ 已达标项：连接惰性（src/index.ts:81-126）、并发 promise 去重 + 失败重置、无候选不快落 7373
   （src/client.ts:244-251）、contract 锁工具数与 action 枚举、cli-hints 全量口径护栏
   （SCAN_ROOTS 全仓文本扫描）。
@@ -159,11 +188,14 @@
 
 ## 建卡映射（批八）
 
-| 差距                                                          | 卡                                    | 类型             |
-| ------------------------------------------------------------- | ------------------------------------- | ---------------- |
-| S-3 renderJson 丢 cursor                                      | 批八 1/4                              | todo（当场执行） |
-| P1-1 backend_args + P1-2 animation clear + P2-4/P2-5 别名标注 | 批八 2/4                              | todo（当场执行） |
-| T-1/T-2/T-3/T-4/T-5 测试增强 + D-5 doctor 口径                | 批八 3/4                              | todo（当场执行） |
-| D-1/D-2/D-3/D-4 文档同步 + E-2 demo-app README                | 批八 4/4                              | todo（当场执行） |
-| S-1/S-2 错误信封 + 401 重发现                                 | backlog（核心客户端语义，需用户批准） |
-| M-1/M-2/M-3/M-4/M-5/M-6/M-7/M-8/M-9/M-10 + L 组               | backlog（评估/增强类）                |
+| 差距                                                                | 卡                          | 类型                   |
+| ------------------------------------------------------------------- | --------------------------- | ---------------------- |
+| S-3 renderJson 丢 cursor                                            | 批八 1/4                    | todo（当场执行）       |
+| P1-1 backend_args + P1-2 animation clear + P2-4/P2-5 别名标注       | 批八 2/4                    | todo（当场执行）       |
+| T-1/T-2/T-3/T-4/T-5 测试增强 + D-5 doctor 口径                      | 批八 3/4                    | todo（当场执行）       |
+| D-1/D-2/D-3/D-4 文档同步 + E-2 demo-app README                      | 批八 4/4                    | todo（当场执行）       |
+| L-5 css/selector 主别名方向（勘误后按双层口径改描述）               | 批九 1/3                    | todo（当场执行）       |
+| E-1 smoke 后端日志链路检查                                          | 批九 2/3                    | todo（当场执行）       |
+| L-5/L-7 结论勘误 + M-1 归属澄清 + L-1 kind 词汇表边界               | 批九 3/3                    | todo（当场执行）       |
+| S-1/S-2 错误信封 + 401 重发现（**含 M-1 kind 映射与 status 透出**） | backlog-A t-mw2eut5k-6k1elc | backlog（需用户批准）  |
+| M-2/M-3/M-4/M-5/M-6/M-7/M-8/M-9/M-10 + 其余 L 组                    | backlog-B t-mw2evd2u-0dukch | backlog（评估/增强类） |
