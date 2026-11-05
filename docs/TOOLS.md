@@ -82,6 +82,31 @@ Rust `AnimationParams` 在 0.8.8 / 0.10.2 均无该字段）。
 - 未知字段在服务端被静默忽略（serde 未开启 `deny_unknown_fields`，全 crate 无该
   属性），故 0.8.8 下误传 `webview_label` 不会报错，但也不会生效。
 
+### route 的 0.10.3 行为边界
+
+`victauri_route` 的 `add` 子动作在 0.10.x 服务端有四条行为边界（插件侧原样
+透传、不重复校验；上游 0.10.3 源码 `js_bridge.rs:3586-3613` / `:3545-3558`、
+`mcp/mod.rs:3107`）：
+
+1. **两类 fulfill 规则在 `add` 时被拒**：pattern 命中 IPC host 且 mock 不可读
+   （无 body 如 204、非 JSON body）——「不可读」只在 Content-Type 头为
+   `application/json` 时才成立，`text/plain` 等类型不算（上游
+   `js_bridge.rs:1229`）；或 mock 不被 `Response` 构造器接受（header 名或值
+   非法、非 ByteString `status_text`）。
+2. **更宽的 pattern 会被接受**，但当该 mock 同样不可读时 `add` 返回
+   `ipc_warning`：命中 Tauri IPC 调用时 Tauri 读不出 mock，服务端回 Tauri
+   错误并记录 `mock_unreadable`，**真实命令不执行**。
+3. **正则的重复捕获组在 `add` 时被拒**（`match_type='regex'` 时才检查，如
+   `(a+)+` 会挂起页面，JavaScript 无正则超时；上游 `:3545` 的条件判断、
+   `:3552` 的错误文案）；0.10.2 及以前没有此校验。
+4. **`ipc_warning` / `mock_unreadable` 是 0.10.x 引入的细化**，0.8.8 服务端
+   没有这两项。
+
+- 版本可核性：第 3 条本机可核 0.8.8 / 0.10.2 均无；第 4 条本机可核 0.8.8 无、
+  0.10.2 有。
+- 与 `src/tools/compound/catalog.ts` 的 `route` 工具 description 同源，回归
+  锁定见 `src/tools/contract.test.ts`。
+
 ## 后端日志与 0.10.x 新参数
 
 - **`victauri_wait_for` 条件为 10 值闭集**：`text` `text_gone` `selector`
@@ -126,6 +151,32 @@ Rust `AnimationParams` 在 0.8.8 / 0.10.2 均无该字段）。
 - 非 `image/*` mimeType（如音频）同通道落盘，但会在 `note` 注明未经
   活体验证；落盘失败时回退原文返回（数组包成 `{items}`）并附
   `image_save_error`，不吞错。
+
+## 数组结果的形状
+
+插件把服务端的返回值统一归一为**顶层 object**（dsh 工具契约要求顶层是
+`Record`），归一逻辑在 `src/tools/standalone/bridge.ts` 的 `toRecord`：
+
+| 服务端返回            | 插件返回           |
+| --------------------- | ------------------ |
+| 顶层数组              | `{"items": [...]}` |
+| 顶层对象              | 原样透出（不包装） |
+| 标量（字符串/数字等） | `{"value": ...}`   |
+
+- **影响面是全部数组型结果**，不只 `victauri_find_elements`——实测
+  `get_registry` / `logs` / `recording` / `trace` / `route` / `window` / `fault` /
+  `animation` 等返回数组的子动作一律拿到 `{"items": [...]}`（本列表非穷举，
+  判定依据是结果顶层类型而非工具名）。
+- **与上游的差异**：上游 victauri 的 `logs` 的 `console` / `network` / `ipc` /
+  `navigation` / `dialogs` / `events` 返回的是**裸数组**（bare array，见上游
+  0.10.3 文档 `tools-reference.md` 的 logs 章节「返回最新 100 条…as a bare
+  array」口径，`tools-reference.md:730-732`），插件多包了一层
+  `{"items": ...}`——读这些结果时先取 `items`。
+- **为什么多这一层**：dsh 工具的返回值顶层必须是 object，裸数组无法直接作为
+  工具结果返回。
+- **透传提案（未授权执行）**：让插件原样透传上游裸数组的提案见看板卡
+  `t-mw1ri0ep-8vw7ql`——该卡为 backlog 提案卡，**未授权执行，需用户批准后才能
+  认领**；在获批并落地前，一律按本节的 `{"items": [...]}` 形状解读。
 
 ## 请求超时语义（REST 通道）
 

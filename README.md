@@ -63,7 +63,7 @@ Victauri 全量 **35 个工具** + 1 个 CLI 桥工具 + 1 个 CLI 探测工具 
 - **后端日志三段式（0.10.2 起）**：`victauri_invoke_command` 传 `with_logs=true` 拿 `backend_log_cursor` → `victauri_wait_for` 传 `condition:'log'` + `since_seq:<cursor>` 阻塞到匹配的后端行（`level` / `fields` 过滤，匹配脱敏后文本）→ `victauri_logs` `action='backend_digest'` 摘要盘点；`since_seq` 为向前分页游标（返回游标之后最旧的条目）。
 - **任意 JSON 值参数**：`victauri_assert_semantic` / `victauri_wait_for` 的 `expected` 与 `victauri_storage` 的 `value` 接受任意 JSON 值（数值/对象/数组/布尔/`null`），透传时**不字符串化**（详见 [docs/TOOLS.md](docs/TOOLS.md)「任意 JSON 值参数」）。
 - **元素查找 0.10.3 新参**：`victauri_find_elements` 支持 `title_attr` / `attribute` / `attribute_value` / `text_exact` / `include_hidden`（true 才返回隐藏元素）；同版本起可访问名与 visible/enabled 为诚实计算值。
-- **数组包装**：顶层数组结果包装为 `{items: [...]}`（dsh 工具契约要求顶层 object）。
+- **数组包装**：顶层数组结果包装为 `{items: [...]}`（dsh 工具契约要求顶层 object）；上游 victauri 的 `logs` 部分动作返回的是裸数组（bare array），读结果先取 `items`（详见 [docs/TOOLS.md](docs/TOOLS.md)「数组结果的形状」）。
 - **版本兼容**：参数 schema 以 victauri 0.10.3（官方文档 + CHANGELOG）为基线，与 0.8.8（本机桥实测）及 0.10.2（cargo registry 源码）双源核对对齐，字段级差异在工具 description 内以 `[实测]` / `[文档]` / `[源码]` / `[桥]` 标注。
 
 ## 故障排查
@@ -92,8 +92,8 @@ pnpm smoke       # demo-app 本地冒烟（半自动 e2e，见下）
 ### 本地冒烟（`pnpm smoke`）
 
 `pnpm smoke` 一条命令跑完 demo-app 的半自动 e2e：构建 demo-app（`cargo build --features victauri`）
-→ 启动 → 轮询 discovery 就绪 → 经 REST 主通道冒烟 9 项检查 → PASS/FAIL 摘要 → 结束进程树。
-覆盖 5 个核心工具（`get_plugin_info` / `app_info` / `eval_js` / `dom_snapshot` / `invoke_command`）
+→ 启动 → 轮询 discovery 就绪 → 经 REST 主通道冒烟 10 项检查 → PASS/FAIL 摘要 → 结束进程树。
+覆盖 6 个核心工具（`get_plugin_info` / `app_info` / `eval_js` / `dom_snapshot` / `invoke_command` / `logs`）
 与 `/health`、`/info`、`/api/tools` 三个端点，含「无 token → 401」认证闸门检查。
 
 - **边界：不进 CI**。需要 Rust 工具链（cargo）、会真的拉起一个 Tauri 窗口，并依赖本机

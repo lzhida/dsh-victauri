@@ -572,3 +572,104 @@ describe('dsh-victauri 0.10.x 新增子命令口径（tools/call/run/logs）', (
     expect(readme).toContain('35 个');
   });
 });
+
+/**
+ * 对外文档口径护栏：route 的 0.10.3 行为边界、数组结果形状、README 冒烟口径。
+ *
+ * 这三处口径原先只存在于工具 description 与脚本实现里，文档读者看不到；
+ * 本组用例把「文档 ↔ 实现」钉在一起：实现侧改了关键词而文档没跟，用例必红。
+ *
+ * 断言一律**按小节切片**后再查词，不做全文 toContain——否则关键词被挪到别的
+ * 段落也会照样通过，护栏等于没有。
+ */
+
+/** 从 markdown 中切出以 heading 开头、到下一个同级/更高级 heading 之前的小节正文。 */
+function sectionOf(md: string, heading: string): string {
+  const start = md.indexOf(heading);
+  expect(start, `文档缺少小节标题 ${heading}`).toBeGreaterThan(-1);
+  const rest = md.slice(start + heading.length);
+  const next = rest.search(/\n#{1,3} /);
+  return next === -1 ? rest : rest.slice(0, next);
+}
+
+describe('对外文档口径护栏（route 行为边界 / 数组结果形状 / 冒烟口径）', () => {
+  it('docs 补齐 route 的 0.10.3 行为边界，且与 catalog 的 route description 同源', () => {
+    const docs = readFileSync(join(REPO_ROOT, 'docs/TOOLS.md'), 'utf8');
+    const section = sectionOf(docs, '### route 的 0.10.3 行为边界');
+    // 四条细化口径各留一个锚点（且必须落在本小节内，不能挪到别处蒙混）
+    for (const kw of [
+      'ipc_warning',
+      'mock_unreadable',
+      '真实命令不执行',
+      '重复捕获组',
+      "match_type='regex'",
+      '0.10.2 及以前没有此校验',
+    ]) {
+      expect(section, `docs route 小节缺少 ${kw}`).toContain(kw);
+    }
+    // 与实现同源：catalog 的 route description 必须含同一组事实锚点
+    const routeDesc = COMPOUND_TOOL_SPECS.find(
+      (s) => s.name === 'route',
+    )!.description;
+    for (const kw of [
+      'ipc_warning',
+      'mock_unreadable',
+      '真实命令不执行',
+      '重复捕获组',
+      '0.10.2 及以前没有此校验',
+    ]) {
+      expect(routeDesc, `catalog route 缺少 ${kw}`).toContain(kw);
+      expect(section, `docs route 小节缺少 ${kw}`).toContain(kw);
+    }
+  });
+
+  it('docs 写明数组结果的插件包装形状与上游 bare array 差异', () => {
+    const docs = readFileSync(join(REPO_ROOT, 'docs/TOOLS.md'), 'utf8');
+    const section = sectionOf(docs, '## 数组结果的形状');
+    for (const kw of [
+      '{"items":',
+      '{"value":',
+      '顶层数组',
+      '顶层对象',
+      '标量',
+      'bare array',
+    ]) {
+      expect(section, `docs 数组小节缺少 ${kw}`).toContain(kw);
+    }
+    // 包装规则与实现逐条对齐：数组→items / 对象原样 / 标量→value
+    const bridgeSrc = readFileSync(
+      join(REPO_ROOT, 'src/tools/standalone/bridge.ts'),
+      'utf8',
+    );
+    expect(bridgeSrc).toMatch(/return\s*\{\s*items:\s*value\s*\}/);
+    expect(bridgeSrc).toMatch(/return\s*\{\s*value\s*\}/);
+    // 透传实施属 backlog 提案（用户裁定不自动执行），文档要指向该卡并写明未授权
+    expect(section).toContain('t-mw1ri0ep-8vw7ql');
+    expect(section).toContain('未授权执行');
+  });
+
+  it('README 冒烟口径与 scripts/smoke.mjs 实际一致：10 项检查 / 6 个核心工具（含 logs）', () => {
+    const readme = readFileSync(join(REPO_ROOT, 'README.md'), 'utf8');
+    const smoke = readFileSync(join(REPO_ROOT, 'scripts/smoke.mjs'), 'utf8');
+    // 核心工具清单以脚本里的 required 数组为唯一真源，README 逐字跟随
+    const requiredBlock = smoke.match(/const required = \[([\s\S]*?)\];/);
+    expect(requiredBlock, 'smoke.mjs 未找到 required 工具数组').not.toBeNull();
+    const names = [...requiredBlock![1].matchAll(/'([^']+)'/g)].map(
+      (m) => m[1],
+    );
+    expect(names.length).toBe(6);
+    expect(names).toContain('logs');
+    const expected =
+      `覆盖 ${String(names.length)} 个核心工具（` +
+      names.map((n) => `\`${n}\``).join(' / ') +
+      '）';
+    expect(readme).toContain(expected);
+    // 检查项数同样以脚本头注释为真源
+    const headerCount = smoke.match(/冒烟清单（(\d+) 项检查/);
+    expect(headerCount, 'smoke.mjs 头注释未写明检查项数').not.toBeNull();
+    expect(readme).toContain(`冒烟 ${headerCount![1]} 项检查`);
+    // 旧口径必须被清掉
+    expect(readme).not.toContain('9 项检查');
+    expect(readme).not.toContain('5 个核心工具');
+  });
+});
