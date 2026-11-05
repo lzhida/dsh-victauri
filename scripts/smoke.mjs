@@ -10,16 +10,30 @@
  * （cargo）、会真的拉起一个 Tauri 窗口，并依赖本机 `%TEMP%/victauri` discovery
  * 目录。仅供本地开发与发版前自检使用。
  *
- * 冒烟清单（9 项检查，覆盖 5 个核心工具）：
+ * 冒烟清单（10 项检查，覆盖 6 个核心工具）：
  *   1. GET  /health                    → {status:"ok"}（无认证 liveness）
  *   2. GET  /info                      → name==='victauri' + version + 端口自洽
- *   3. GET  /api/tools                 → 工具名数组，含 5 个核心工具
+ *   3. GET  /api/tools                 → 工具名数组，含 6 个核心工具
  *   4. POST /api/tools/get_plugin_info → result.tools.enabled > 0
  *   5. POST /api/tools/app_info        → result.process.pid === 启动进程 pid
  *   6. POST /api/tools/eval_js         → {"code":"1+1"} 结果 === 2
  *   7. POST /api/tools/dom_snapshot    → result.tree 含 demo 页可交互元素
  *   8. POST /api/tools/invoke_command  → greet 命令返回 "Hello, smoke!"
- *   9. GET  /api/tools（不带 token）   → HTTP 401（认证闸门有效）
+ *   9. POST /api/tools/logs            → backend_digest 动作可用（0.10.2 起，
+ *                                        见下方「后端日志链路」的版本门控说明）
+ *  10. GET  /api/tools（不带 token）   → HTTP 401（认证闸门有效）
+ *
+ * 后端日志链路（第 8、9 项）的版本门控：
+ *   - `logs{action:"backend_digest"}` 与 `invoke_command{with_logs:true}` 是
+ *     上游 0.10.2 才有的能力（0.8.8 的 LogsAction 只有 8 个动作、InvokeCommandParams
+ *     无 with_logs 字段；未知 action 会因 serde 未知枚举值被拒）。
+ *   - 脚本按 GET /info 报告的服务端版本决定：>= 0.10.2 时断言契约形状
+ *     （digest 含 sources/buffered；with_logs 信封含 backend_logs/backend_log_cursor）；
+ *     < 0.10.2 时跳过这些断言并在 detail 里写明原因——旧服务端不是失败，是版本差异。
+ *   - 版本号解析容忍 `v` 前缀，并按 semver 把预发布版（0.10.2-rc.1）视为低于同号正式版；
+ *     版本不可解析时按「不满足」处理（宁可跳过，不做乐观假设）。
+ *   - demo-app 未安装 log_layer/log_logger，故断言针对「无捕获源」形态：
+ *     digest 仍返回 sources 与 buffered（缓冲为空），这不是错误。
  *
  * 环境变量：
  *   SMOKE_SKIP_BUILD=1          跳过 cargo build（复用已有产物）
@@ -100,6 +114,47 @@ function sleep(ms) {
   return new Promise((done) => {
     setTimeout(done, ms);
   });
+}
+
+/**
+ * 解析 '0.10.2' 形式的版本号。
+ *
+ * - 容忍 `v` 前缀（'v0.10.3' → 0.10.3），避免把新服务端误判成旧服务端而静默跳过断言；
+ * - 预发布/构建后缀单独记下（'0.10.2-rc.1' 的 prerelease='rc.1'），用于 semver 比较；
+ * - 不可解析返回 null（调用方按「不满足」保守处理）。
+ */
+function parseVersion(raw) {
+  if (typeof raw !== 'string') return null;
+  const cleaned = raw.trim().replace(/^v/i, '');
+  const [core, ...prereleaseParts] = cleaned.split('+')[0].split('-');
+  const parts = core.split('.').map((part) => Number.parseInt(part, 10));
+  if (parts.length === 0 || parts.some((part) => !Number.isInteger(part))) {
+    return null;
+  }
+  return {
+    parts,
+    prerelease: prereleaseParts.length > 0 ? prereleaseParts.join('-') : null,
+  };
+}
+
+/**
+ * 版本是否 >= 目标（逐段数值比较 + semver 预发布规则）。
+ * 不可解析一律视为「不满足」——宁可跳过断言，也不拿未知版本做乐观假设。
+ */
+function isAtLeast(version, target) {
+  const actual = parseVersion(version);
+  const wanted = parseVersion(target);
+  if (actual === null || wanted === null) return false;
+  const length = Math.max(actual.parts.length, wanted.parts.length);
+  for (let index = 0; index < length; index += 1) {
+    const left = actual.parts[index] ?? 0;
+    const right = wanted.parts[index] ?? 0;
+    if (left > right) return true;
+    if (left < right) return false;
+  }
+  // 数字段完全相同：带预发布后缀的版本低于同号正式版（semver）。
+  if (actual.prerelease && !wanted.prerelease) return false;
+  return true;
 }
 
 /**
@@ -311,15 +366,30 @@ async function httpJson(url, options) {
   }
 }
 
-/** 记录一项检查结果（失败不抛，落到摘要里统一呈现）。 */
+/**
+ * 记录一项检查结果（失败不抛，落到摘要里统一呈现）。
+ * 回调可返回字符串（正常）或 {skipped:true, detail}（按版本跳过——不是失败）。
+ */
 async function check(name, fn) {
   try {
-    const detail = await fn();
-    checks.push({ name, ok: true, detail });
-    log('check', `PASS ${name} — ${detail}`);
+    const outcome = await fn();
+    const skipped =
+      typeof outcome === 'object' &&
+      outcome !== null &&
+      outcome.skipped === true;
+    const detail = skipped ? outcome.detail : outcome;
+    checks.push({ name, ok: true, skipped, detail });
+    log('check', `${skipped ? 'SKIP' : 'PASS'} ${name} — ${detail}`);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    checks.push({ name, ok: false, detail: message });
+    // Node 的 fetch 抛错时 err.message 往往只有 "fetch failed"，
+    // 真实原因（ECONNREFUSED 等）在 err.cause.message —— 一并带出便于本地排障。
+    const message =
+      err instanceof Error
+        ? [err.message, err.cause instanceof Error ? err.cause.message : '']
+            .filter((part) => part !== '' && part !== err.message)
+            .join('：') || err.message
+        : String(err);
+    checks.push({ name, ok: false, skipped: false, detail: message });
     log('check', `FAIL ${name} — ${message}`);
   }
 }
@@ -334,6 +404,11 @@ async function runChecks(instance) {
       headers: { ...auth, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+
+  /** 服务端版本（info 检查里回填）；未知时按「不具备后端日志能力」处理。 */
+  let serverVersion = null;
+  /** 后端日志动作（logs backend_digest / invoke_command with_logs）是否可用（0.10.2 起）。 */
+  const hasBackendLogs = () => isAtLeast(serverVersion, '0.10.2');
 
   await check('health（无认证 liveness）', async () => {
     const response = await httpJson(`${base}/health`, { method: 'GET' });
@@ -358,6 +433,7 @@ async function runChecks(instance) {
       instance.port,
       'body.port 与 discovery 端口一致性',
     );
+    serverVersion = response.body.version;
     return `GET /info → victauri ${String(response.body.version)} @:${String(response.body.port)}`;
   });
 
@@ -377,6 +453,7 @@ async function runChecks(instance) {
       'eval_js',
       'dom_snapshot',
       'invoke_command',
+      'logs',
     ];
     const missing = required.filter((name) => !names.includes(name));
     assertTrue(missing.length === 0, `缺少核心工具：${missing.join(', ')}`);
@@ -425,17 +502,89 @@ async function runChecks(instance) {
   });
 
   await check('invoke_command（inspectable 命令）', async () => {
+    // 0.10.2 起可带 with_logs:true，让服务端把「命令执行期间捕获的后端日志」
+    // 一并回传（信封：{result, backend_logs, backend_log_cursor, next_seq}）。
+    // 旧服务端无该参数（serde 未知字段被静默忽略），故按版本门控。
+    const withLogs = hasBackendLogs();
     const response = await post('invoke_command', {
       command: 'greet',
       args: { name: 'smoke' },
+      ...(withLogs ? { with_logs: true } : {}),
     });
     assertEqual(response.status, 200, 'HTTP 状态码');
-    const result = response.body?.result;
+    if (!withLogs) {
+      const result = response.body?.result;
+      assertTrue(
+        typeof result === 'string' && result.includes('Hello, smoke!'),
+        `greet 返回异常：${JSON.stringify(result)}`,
+      );
+      return (
+        `POST /api/tools/invoke_command → greet 返回 "Hello, smoke!"` +
+        `（服务端 ${String(serverVersion ?? '未知')} 无 with_logs：本项只覆盖 greet，` +
+        `后端日志断言按版本跳过）`
+      );
+    }
+    // with_logs 形态：REST 信封是 {result: {result, backend_logs, backend_log_cursor, next_seq}}
+    const envelope = response.body?.result;
     assertTrue(
-      typeof result === 'string' && result.includes('Hello, smoke!'),
-      `greet 返回异常：${JSON.stringify(result)}`,
+      typeof envelope === 'object' && envelope !== null,
+      `with_logs 信封异常：${JSON.stringify(response.body)}`,
     );
-    return 'POST /api/tools/invoke_command → greet 返回 "Hello, smoke!"';
+    assertTrue(
+      typeof envelope.result === 'string' &&
+        envelope.result.includes('Hello, smoke!'),
+      `greet 返回异常：${JSON.stringify(envelope.result)}`,
+    );
+    assertTrue(
+      Array.isArray(envelope.backend_logs),
+      `backend_logs 缺失或非数组：${JSON.stringify(envelope.backend_logs)}`,
+    );
+    assertTrue(
+      typeof envelope.backend_log_cursor === 'number',
+      `backend_log_cursor 缺失：${JSON.stringify(envelope)}`,
+    );
+    // 上游语义：backend_log_cursor 是「本次调用开始前」的日志游标
+    // （attach_backend_logs 的 from），不是结束游标；用它做 wait_for 的
+    // since_seq 可以只捕获「调用之后」新产生的日志行。
+    return (
+      'POST /api/tools/invoke_command → greet 返回 "Hello, smoke!"' +
+      `（with_logs 信封：backend_logs ${String(envelope.backend_logs.length)} 条，` +
+      `backend_log_cursor=${String(envelope.backend_log_cursor)}（调用起点游标））`
+    );
+  });
+
+  await check('logs（后端日志动作可用性）', async () => {
+    if (!hasBackendLogs()) {
+      // 旧服务端没有 backend_digest 动作——不是失败，是版本差异，标记为 SKIP。
+      // 版本未知（/info 未通过）时不能断言「服务端没有该动作」，只说无法确认。
+      const detail =
+        serverVersion === null
+          ? '跳过：服务端版本未知（/info 检查未通过），无法确认是否支持 backend_digest'
+          : `跳过：服务端 ${serverVersion} 无 backend_digest 动作` +
+            '（0.10.2 起提供；0.8.8 的 LogsAction 只有 8 个动作）';
+      return { skipped: true, detail };
+    }
+    const response = await post('logs', { action: 'backend_digest' });
+    assertEqual(response.status, 200, 'HTTP 状态码');
+    const digest = response.body?.result;
+    assertTrue(
+      typeof digest === 'object' && digest !== null,
+      `backend_digest 返回异常：${JSON.stringify(response.body)}`,
+    );
+    assertTrue(
+      typeof digest.sources === 'object' && digest.sources !== null,
+      `digest.sources 缺失：${JSON.stringify(digest)}`,
+    );
+    assertTrue(
+      typeof digest.buffered === 'number',
+      `digest.buffered 缺失：${JSON.stringify(digest)}`,
+    );
+    // demo-app 未安装 log_layer/log_logger，故这里是「无捕获源」形态：
+    // 缓冲为空 + 给出启用提示——属正常契约，不判失败。
+    return (
+      'POST /api/tools/logs{action:"backend_digest"} → sources/buffered 齐备' +
+      `（buffered=${String(digest.buffered)}；demo-app 无结构化日志捕获源，属正常形态）`
+    );
   });
 
   await check('auth（无 token 被拒）', async () => {
@@ -475,19 +624,25 @@ function cleanup() {
 
 /** 打印人可读的冒烟摘要。 */
 function printSummary(startedAt) {
-  const passed = checks.filter((item) => item.ok).length;
-  const failed = checks.length - passed;
+  // 分子只算「真正跑过并通过」的项：skipped 项 ok=true，但它是按版本跳过，
+  // 计入分子会被读成「有 1 项没过」。
+  const passed = checks.filter((item) => item.ok && !item.skipped).length;
+  const failed = checks.filter((item) => !item.ok).length;
+  const skipped = checks.filter((item) => item.skipped).length;
   console.log('');
   console.log('=== dsh-victauri smoke 摘要 ===');
   for (const item of checks) {
-    console.log(`${item.ok ? 'PASS' : 'FAIL'}  ${item.name} — ${item.detail}`);
+    const status = !item.ok ? 'FAIL' : item.skipped ? 'SKIP' : 'PASS';
+    console.log(`${status}  ${item.name} — ${item.detail}`);
   }
   console.log('');
   console.log(
     checks.length === 0
       ? '结果：未执行任何检查（前置阶段失败）'
-      : `结果：${String(passed)}/${String(checks.length)} 通过` +
-          (failed > 0 ? `，${String(failed)} 项失败` : ''),
+      : `结果：${String(passed)} 项通过` +
+          (skipped > 0 ? `，${String(skipped)} 项按版本跳过` : '') +
+          (failed > 0 ? `，${String(failed)} 项失败` : '') +
+          `（共 ${String(checks.length)} 项）`,
   );
   console.log(`端口：${portNote}`);
   console.log(`耗时：${String(Date.now() - startedAt)} ms`);
