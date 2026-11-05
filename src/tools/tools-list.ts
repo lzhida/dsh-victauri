@@ -46,6 +46,10 @@ export const TOOL_DESCRIPTION_MAX_CHARS = 200;
  *   描述调用失败的原因（no-instance / http-error / tool-error …）；
  * - `src/tools/cli-status.ts` 的 `CliStatusError.kind`——**CLI 探测域**自有
  *   词汇表（not_found / cli-error / timeout）。
+ *
+ * 注意：本工具 `ToolsListResult.error` 字段里的 `kind` 是**自由字符串**
+ * （类型上写作 `string`），沿用 REST 桥接信封的取值，也可能取兜底值 `unknown`——
+ * 它本身不构成第四套封闭词汇表。
  */
 export type ToolsListWarningKind =
   /** 服务端提供、插件未暴露（插件版本落后于服务端）。 */

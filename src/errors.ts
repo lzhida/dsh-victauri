@@ -25,6 +25,10 @@ export class VictauriError extends Error {
  *
  * 例：cli 探测域的 `not_found` 表示「CLI 没找到」，与本表的 `no-instance`
  * （找不到活的 victauri 实例）不是一回事，不可按名字等价理解。
+ *
+ * 兜底值：非 VictauriError 的异常在信封里归一为 `unknown`
+ * （见 src/tools/standalone/bridge.ts 的 toErrorValue），`unknown` 是**兜底值、
+ * 不属于本封闭表**，也不代表任何一种已定义的失败原因。
  */
 export type VictauriErrorKind =
   /** discovery 目录不存在或无候选实例 */

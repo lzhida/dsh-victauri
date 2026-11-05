@@ -438,6 +438,15 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 | CLI 探测域        | `src/tools/cli-status.ts` 的 `CliStatusError.kind`  | `not_found` / `cli-error` / `timeout`                                                                              | **本机 `victauri` CLI 是否可用**：没找到可执行文件 / 拉起失败 / 探测超时                            | `victauri_cli_status` 工具的 `error` 字段                            |
 | 工具发现域        | `src/tools/tools-list.ts` 的 `ToolsListWarningKind` | `not_exposed` / `missing_on_server`                                                                                | **暴露面与服务端清单的差异**：服务端有而插件没暴露 / 插件暴露而服务端没有                           | `victauri_tools_list` 工具的 `warnings` 数组                         |
 
+兜底值与自由字符串（不属上面任何封闭表）：
+
+- REST 桥接信封里还会出现 `unknown`——非 `VictauriError` 的异常在
+  `src/tools/standalone/bridge.ts` 的 `toErrorValue` 里被归一为 `unknown`。
+  它是**兜底值**，不对应任何一种已定义的失败原因。
+- `victauri_tools_list` 工具的 `error` 字段形状是 `{kind,message,hint}`，但其中
+  `kind` 是**自由字符串**（类型上写作 `string`），并非受限词汇表——它沿用
+  REST 桥接信封的取值，也可能取兜底值 `unknown`。
+
 易混对照（**仅作提醒，不是等价关系**）：
 
 - CLI 探测域的 `not_found` =「本机没装/没命中 `victauri` CLI」；

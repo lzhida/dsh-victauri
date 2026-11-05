@@ -46,9 +46,9 @@
   `{"error":"eval timed out after 30s"}` → 工具返回裸字符串，无 kind/hint，与 docs/TOOLS.md:318/344/346
   承诺的 `{kind,message,hint}` 不符。**修复方向**：client/bridge 层识别 `error` 键响应并归一为
   VictauriError 信封。
-- 🟡 **M-1 kind 词汇表缺 auth/not-found/rate-limited/invalid-params**——src/errors.ts:12-26 仅 7 值；
+- 🟡 **M-1 kind 词汇表缺 auth/not-found/rate-limited/invalid-params**——src/errors.ts:33-47 仅 7 值；
   src/client.ts:106-112 把 400/401/403/404/429 同归 http-error 且丢弃 VictauriHttpError.status
-  （errors.ts:34-47 实际持有 status）。
+  （errors.ts:55-68 实际持有 status）。
   **【2026-11-05 归属澄清，批九 3/3】** M-1 与 backlog-A（t-mw2eut5k-6k1elc）的 S-1（上游工具级
   失败裸错误、错误信封失效）/ S-2（客户端永不失效、401 不重发现）**同属错误信封与客户端语义
   改造**：三者都要动 `src/client.ts` 与 `src/tools/standalone/bridge.ts`，并行实施会同文件双写。
@@ -66,7 +66,7 @@
   `{"totally_unknown_key":1}`；bridge.ts:112 注释「服务端拒未知字段」仅对 2 条登记别名生效。
 - 🟡 **M-6 上游正式别名未接**——window/window_label、checkpoint_label（上游 tools-reference 行 13/607）；
   插件别名表仅 eval_js/query_db 两条（src/tools/standalone/bridge.ts:47-52）。
-- 🟢 **L-1 cli_status 的 kind 词汇表与 errors.ts 不统一**——src/tools/cli-status.ts:55-59。
+- 🟢 **L-1 cli_status 的 kind 词汇表与 errors.ts 不统一**——src/tools/cli-status.ts:65-69。
   **【2026-11-05 澄清，批九 3/3】** 二者**语义域不同、不是同一层**：cli_status 的
   not_found/cli-error/timeout 属「CLI 探测域」（CLI 装没装、跑不跑得起来），
   errors.ts 的 7 值属「REST 桥接错误信封」（调用失败的原因）。二者不互通、不可按名字等价
@@ -96,7 +96,7 @@
   时宿主放弃、子进程继续跑。
 - 🟢 **L-3 wait_for 预算被 120s 硬夹**——src/tools/standalone/timeout.ts:17,30-52。
 - 🟢 **L-4 trace/introspect 固定 90s**——src/tools/compound/catalog.ts:270,494。
-- 🟢 **L-7 animation points 默认 20 与上游文档 6 不一致**——src/tools/compound/catalog.ts:98。
+- 🟢 **L-7 animation points 默认 20 与上游文档 6 不一致**——src/tools/compound/catalog.ts:105。
   **【2026-11-05 改判，批九 3/3】** 本条**不是插件缺陷**：上游 markdown 文档写 default 6
   （tools-reference.md:1012，示例 :1025 也用 6），而上游 **schema doc-comment 与实现**
   写 20——0.10.2 `compound_params.rs:767-768` / 0.10.3 `:771-772` 为「Default 20,
@@ -104,6 +104,8 @@
   插件跟的是 schema/实现口径（20），**改成 6 反而错**。插件描述已加注该矛盾与取舍依据
   （批九 1/3，提交 71112e7）；上游文档/实现矛盾已写入 `docs/upstream-feedback-0.10.3.md`
   第 6 条。本条从「插件待修项」改判为「上游口径矛盾，已在上游反馈材料登记」。
+  **证据强度说明**：schema/实现侧行号与数值**已在本机 cargo registry 逐条复核**；
+  文档侧行号（:1012 / :1025）来自上游文档引用，本机无副本，**未本地复核**。
 - 🟢 **L-9 CLI stdout 上限按字符计（非字节）可略超 512KB**——src/cli.ts:10,78-91。
 - 🟢 **L-10 图像落盘无字节上限**——src/tools/standalone/image.ts:26,82-97。
 
@@ -133,7 +135,7 @@
   （dsh-tools 校验边界：since_seq:'7' 抛 ToolArgsError、未知 action 报枚举、未知顶层参数放行）。
 - 🟢 **T-6 route 0.10.3 细化口径未覆盖**——regex 重复组 add 时被拒、mock body 不可读时 add 拒绝
   （mock_unreadable）、宽 pattern 给 ipc_warning（批六 2/4 V2-A 低-10）。
-- 🟢 **L-5 find_elements 的 css/selector 双声明不归一**——src/tools/standalone/catalog.ts:178,186。
+- 🟢 **L-5 find_elements 的 css/selector 双声明不归一**——src/tools/standalone/catalog.ts:179,191。
   **【2026-11-05 勘误，批九 3/3】** 本条原描述「主别名方向写反」不准确，真实分歧是
   **上游文档层 vs 上游源码/schema 层自 0.8.8 起长期并存**：
   - 文档层（v0.8.8 `tools-reference.md:136` / v0.10.2 `:157` / v0.10.3 `:157`）**一致**
@@ -144,6 +146,8 @@
     插件描述已按双层口径改写（批九 1/3，提交 71112e7），两键上游均接受、语义等价，
     插件**不做**本地归一（无权威依据选定其一）。上游长期错位已写入
     `docs/upstream-feedback-0.10.3.md` 第 5 条。
+    **证据强度说明**：源码/schema 侧行号与取值**已在本机 cargo registry 逐条复核**；
+    文档侧行号（:136 / :157）来自上游文档引用，本机无副本，**未本地复核**。
 - ✅ 已达标项：连接惰性（src/index.ts:81-126）、并发 promise 去重 + 失败重置、无候选不快落 7373
   （src/client.ts:244-251）、contract 锁工具数与 action 枚举、cli-hints 全量口径护栏
   （SCAN_ROOTS 全仓文本扫描）。
