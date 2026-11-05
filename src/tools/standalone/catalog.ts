@@ -67,7 +67,11 @@ export const ENUM = (
   description,
   ...(required ? { required: true as const } : {}),
 });
-export const WEBVIEW = STR('目标 webview 标签;缺省取第一个可用 webview [文档]');
+export const WEBVIEW = STR(
+  '目标 webview 标签;缺省取第一个可用 webview [文档]。' +
+    '上游正式别名 window / window_label 服务端同样接受(0.10.2 webview_params.rs:11 等) [源码];' +
+    '本插件 schema 仍以 webview_label 为主名',
+);
 
 /** 20 个 standalone 工具规格（顺序 = 文档 tools-reference 顺序）。 */
 export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
@@ -307,15 +311,18 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     description:
       '对应用数据目录里的 SQLite 库执行有界只读 SQL(自动发现库文件)。仅 SELECT/PRAGMA/EXPLAIN/WITH。' +
       '必填 query(别名 sql);params 位置绑定参数数组;path 相对 app data 目录;max_rows 默认 100。' +
-      '上游 0.10.3 文档与 0.10.2 源码均只接受 query,无 sql 别名——sql 是本插件自有的兼容别名' +
-      '(见 src/tools/standalone/bridge.ts ARG_ALIASES)。' +
+      'sql 是上游正式 serde alias(0.10.2 backend_params.rs:130、0.8.8 :117)' +
+      '[源码];0.10.3 文档参数表未列 sql 属文档省略。' +
+      '上游同时收到 query 与 sql 会触发 serde duplicate field 报错,' +
+      '故本插件仍在 bridge.ts ARG_ALIASES 里做本地归一(保留 query、移除 sql)以规避该冲突。' +
       'schema 来源：[实测 0.8.8 报 missing field `query`] + [文档其余字段]。',
     parameters: {
       query: STR(
         '只读 SQL(SELECT/PRAGMA/EXPLAIN/WITH);必填:query 或 sql 至少其一 [实测 0.8.8 接受 query]',
       ),
       sql: STR(
-        '(兼容别名,插件自有)与 query 等价;两者都给时以 query 为准 [桥:本地归一 bridge.ts ARG_ALIASES]',
+        '(上游正式别名)与 query 等价 [源码];上游同时收到 query 与 sql 会触发 serde duplicate field,' +
+          '本插件本地归一保留 query、移除 sql(见 bridge.ts ARG_ALIASES)',
       ),
       params: { type: 'array', description: '位置绑定参数数组 [文档]' },
       path: STR('库文件路径,相对 app data 目录;缺省自动发现 [文档]'),

@@ -13,28 +13,28 @@
 
 ## standalone 批（20 个，victauri 名 1:1 映射 dsh `victauri_<name>`）
 
-| #   | 工具                             | 用途                                                          | 必填参数                         |
-| --- | -------------------------------- | ------------------------------------------------------------- | -------------------------------- |
-| 1   | `victauri_app_info`              | 应用信息（config/databases/env/paths/process）                | —                                |
-| 2   | `victauri_app_state`             | 注册 probe 的后端状态快照                                     | —                                |
-| 3   | `victauri_assert_semantic`       | 语义断言（evaluate + condition 校验）                         | `expression`、`condition`        |
-| 4   | `victauri_check_ipc_integrity`   | IPC 完整性（stale/errored call）                              | —                                |
-| 5   | `victauri_detect_ghost_commands` | 幽灵命令检测（无 handler 的调用）                             | —                                |
-| 6   | `victauri_dom_snapshot`          | DOM 快照（compact/json + stale refs）                         | —                                |
-| 7   | `victauri_eval_js`               | webview 内求值 JS                                             | `code`（别名 `expression` 兼容） |
-| 8   | `victauri_find_elements`         | 按 text/role/selector 搜元素                                  | —                                |
-| 9   | `victauri_get_diagnostics`       | 环境诊断（service worker/iframe/CSP）                         | —                                |
-| 10  | `victauri_get_memory_stats`      | OS 级进程内存统计                                             | —                                |
-| 11  | `victauri_get_plugin_info`       | Victauri 插件配置/端口/命令清单                               | —                                |
-| 12  | `victauri_get_registry`          | 注册命令目录（可按名过滤）                                    | —                                |
-| 13  | `victauri_invoke_command`        | 经 IPC 调用 Tauri 命令                                        | `command`                        |
-| 14  | `victauri_list_app_dir`          | 列应用数据/配置/日志目录                                      | —                                |
-| 15  | `victauri_query_db`              | 只读 SQL 查询 SQLite                                          | `query`（别名 `sql` 兼容）       |
-| 16  | `victauri_read_app_file`         | 读应用目录文件（text/base64）                                 | `path`                           |
-| 17  | `victauri_resolve_command`       | 自然语言匹配命令                                              | `query`                          |
-| 18  | `victauri_screenshot`            | 窗口截图（通用图像通道落盘返回路径）                          | —                                |
-| 19  | `victauri_verify_state`          | 前后端状态比对                                                | `frontend_expr`                  |
-| 20  | `victauri_wait_for`              | 轮询等待条件（10 值闭集，见下文「后端日志与 0.10.x 新参数」） | `condition`                      |
+| #   | 工具                             | 用途                                                          | 必填参数                                    |
+| --- | -------------------------------- | ------------------------------------------------------------- | ------------------------------------------- |
+| 1   | `victauri_app_info`              | 应用信息（config/databases/env/paths/process）                | —                                           |
+| 2   | `victauri_app_state`             | 注册 probe 的后端状态快照                                     | —                                           |
+| 3   | `victauri_assert_semantic`       | 语义断言（evaluate + condition 校验）                         | `expression`、`condition`                   |
+| 4   | `victauri_check_ipc_integrity`   | IPC 完整性（stale/errored call）                              | —                                           |
+| 5   | `victauri_detect_ghost_commands` | 幽灵命令检测（无 handler 的调用）                             | —                                           |
+| 6   | `victauri_dom_snapshot`          | DOM 快照（compact/json + stale refs）                         | —                                           |
+| 7   | `victauri_eval_js`               | webview 内求值 JS                                             | `code`（别名 `expression` 兼容）            |
+| 8   | `victauri_find_elements`         | 按 text/role/selector 搜元素                                  | —                                           |
+| 9   | `victauri_get_diagnostics`       | 环境诊断（service worker/iframe/CSP）                         | —                                           |
+| 10  | `victauri_get_memory_stats`      | OS 级进程内存统计                                             | —                                           |
+| 11  | `victauri_get_plugin_info`       | Victauri 插件配置/端口/命令清单                               | —                                           |
+| 12  | `victauri_get_registry`          | 注册命令目录（可按名过滤）                                    | —                                           |
+| 13  | `victauri_invoke_command`        | 经 IPC 调用 Tauri 命令                                        | `command`                                   |
+| 14  | `victauri_list_app_dir`          | 列应用数据/配置/日志目录                                      | —                                           |
+| 15  | `victauri_query_db`              | 只读 SQL 查询 SQLite                                          | `query`（别名 `sql`，上游正式 serde alias） |
+| 16  | `victauri_read_app_file`         | 读应用目录文件（text/base64）                                 | `path`                                      |
+| 17  | `victauri_resolve_command`       | 自然语言匹配命令                                              | `query`                                     |
+| 18  | `victauri_screenshot`            | 窗口截图（通用图像通道落盘返回路径）                          | —                                           |
+| 19  | `victauri_verify_state`          | 前后端状态比对                                                | `frontend_expr`                             |
+| 20  | `victauri_wait_for`              | 轮询等待条件（10 值闭集，见下文「后端日志与 0.10.x 新参数」） | `condition`                                 |
 
 ## compound 批（15 个，`action` 参数选择子动作）
 

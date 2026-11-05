@@ -114,6 +114,28 @@ describe('dsh-victauri standalone 批', () => {
     expect(calls[1]?.args).toEqual({ code: '2+2' });
   });
 
+  it('query_db 别名归一:sql 归一为 query;两者同传时以 query 为准并移除 sql', async () => {
+    const { client, calls } = mockClient(async () => ({ rows: [] }));
+    const tool = createRestBridgeTool(specOf('query_db'), {
+      getClient: async () => client,
+    });
+    // 只给上游正式别名 sql → 本地归一为 query（上游同时收到两者会 duplicate field）
+    await tool.execute({ sql: 'SELECT 1' }, {} as never);
+    expect(calls[0]?.args).toEqual({ query: 'SELECT 1' });
+    // 两者同传 → 以实测主名 query 为准，别名键被移除
+    await tool.execute({ query: 'a', sql: 'b' }, {} as never);
+    expect(calls[1]?.args).toEqual({ query: 'a' });
+    // 两者都不给 → 结构化错误提示别名仍被接受，且请求不发出
+    const missing = (await tool.execute({}, {} as never)) as AnyRecord;
+    const err = missing['error'] as AnyRecord;
+    expect(err['kind']).toBe('tool-error');
+    expect(String(err['message'])).toContain(
+      'missing required property "query"',
+    );
+    expect(String(err['message'])).toContain('alias "sql" accepted');
+    expect(calls).toHaveLength(2);
+  });
+
   it('alias 工具缺 primary(两个名都没给)返回结构化错误(execute 兜底)', async () => {
     const { client, calls } = mockClient(async () => ({}));
     const tool = createRestBridgeTool(specOf('eval_js'), {

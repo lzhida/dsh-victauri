@@ -407,7 +407,9 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
         'flush',
       ]),
       checkpoint_id: STR('(events_between/get_replay) 快照 ID'),
-      checkpoint_label: STR('(checkpoint) 快照别名'),
+      checkpoint_label: STR(
+        '(checkpoint) 快照标签;上游正式别名 label(0.10.2 compound_params.rs:454) [源码]',
+      ),
       from: STR('(events_between) 起始快照 ID'),
       session_id: STR('(start) 会话 ID，省略自动生成'),
       session_json: STR('(import) 先前 export 的 JSON 串'),

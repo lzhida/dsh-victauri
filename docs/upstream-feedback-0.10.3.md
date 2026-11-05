@@ -116,6 +116,42 @@ less_than | truthy | falsy`；
   生成的 scrub 采样点数量与预期不符；
 - **建议**：统一两处口径（schema 与实现的 20 是实现值，建议把文档改为 20）。
 
+### 7. 正式别名（serde alias）在文档中的标注粒度不一致
+
+- **现象**：上游多处参数在源码里带 `#[serde(alias = …)]` 正式别名，但 0.10.3
+  文档标注别名的**粒度不统一**，只读参数表的集成方仍会漏掉别名键：
+  - `query_db`：**纯文档缺口**——`victauri-plugin-0.10.3/src/mcp/backend_params.rs:142`、
+    `0.10.2` 同文件 `:130`、`0.8.8` 同文件 `:117` 均为
+    `#[serde(alias = "sql")] pub query: String`，doc-comment 写「Accepts `sql`
+    as an alias — the intuitive name an agent reaches for first」；而文档参数表
+    （tools-reference.md:66-72）**只列 `query`**，全文再无 `sql` 一词；
+  - `webview_label`：**粒度差异**——0.10.2 `webview_params.rs:11,:38`、
+    `other_params.rs:105,:149,:196,:204`、`compound_params.rs:137,:184,:343,
+:391,:468,:522,:561,:682,:728,:784,:870`、`introspection_params.rs:75`、
+    `verification_params.rs:18,:26,:43`、`backend_params.rs:59` 均带
+    `#[serde(alias = "window", alias = "window_label")]`；0.10.3 同结构
+    `webview_params.rs:11,:38`；0.8.8 `webview_params.rs:11,:38` 与
+    `backend_params.rs:57` 同。此外 `screenshot` 的 `window_label`
+    （0.10.3 `window_params.rs:8`、0.10.2 同结构）带
+    `#[serde(alias = "window", alias = "webview_label")]`，`window` 工具的
+    `label`（0.10.3 `compound_params.rs:291`）带三个别名
+    `webview_label`/`window`/`window_label`。文档**开头的公共参数说明已列出别名**
+    （tools-reference.md:9：「Every tool that touches a webview accepts
+    `webview_label` (aliases `window`, `window_label`)」），
+    但**各工具参数表行内未逐条标注**；
+  - `recording.checkpoint_label`：0.10.2 `compound_params.rs:454`、0.10.3
+    同文件 `:458` 带 `#[serde(alias = "label")]`；文档参数表
+    （tools-reference.md:603）**已标注**「`checkpoint_label` (alias: `label`)」
+    ——属参数行内标注的正面例子；
+- **影响**：按参数表逐行生成 schema 的集成方只能猜别名键；`sql` 这类上游特意
+  保留的「直觉名」兼容入口（doc-comment 记录了 4DA dogfood 的由来：传 `sql`
+  会得到无提示的 HTTP 400）完全不出现在文档里，容易被当成不支持；
+- **建议**：
+  1. **必须**：给 `query_db` 的 `query` 参数补注「别名 `sql`」（与
+     `checkpoint_label` 的现有写法一致）——这是唯一的纯缺口；
+  2. **可选**：把 `webview_label` 的别名在每个用到它的参数表行内也标注一次
+     （公共说明已列，属粒度统一而非补缺）。
+
 ## 三、行为复核确认无误的项（供上游确认，非缺口）
 
 - `window.resize` / `window.move_to` 的「读回值 + `requested` + `settled:false`
@@ -140,9 +176,14 @@ less_than | truthy | falsy`；
   别名）分开陈述，注明两键等价、以及同传两键时 0.10.3 源码取 css（对 selector
   键即被忽略）——对应上文第 5 条；
 - `animation.points` 描述标注上游文档 default 6 与 schema/实现 default 20 的
-  矛盾，保持 schema 口径 20 并说明取舍依据（对应上文第 6 条）。
+  矛盾，保持 schema 口径 20 并说明取舍依据（对应上文第 6 条）；
+- 别名口径按上游 serde alias 更正并登记：`query_db.sql` 改标 [源码]（上游正式
+  alias，此前写成「插件自有兼容别名」与源码事实相反），`webview_label` 描述
+  登记上游正式别名 `window` / `window_label`，`recording.checkpoint_label`
+  描述登记上游正式别名 `label`——对应上文第 7 条。
 
 ---
 
 _生成：dsh-victauri 批六 4/4（t-mw1vb6fs-mr2mul），2026-11-05；第 5、6 条与本插件
-描述纠偏由批九 1/3（t-mw2vu3ia-1nycp9）补充。上游 issue 提交与否由用户裁决。_
+描述纠偏由批九 1/3（t-mw2vu3ia-1nycp9）补充，第 7 条与别名口径更正由批十 1/2
+（t-mw2xz5ew-ujkz5f）补充。上游 issue 提交与否由用户裁决。_

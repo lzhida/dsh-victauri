@@ -4,6 +4,10 @@
  *
  * 口径四处一致：本文件 = README「工具清单」= docs/TOOLS.md = catalog 头注释。
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import { TOTAL_TOOL_COUNT } from '../index.ts';
@@ -322,7 +326,7 @@ describe('dsh-victauri 工具面契约', () => {
     expect(propOf('wait_for', 'condition')?.required).toBe(true);
   });
 
-  it('批八 2/4 schema 收尾:verify_state backend_args、animation 3 值、别名标注 [桥]', () => {
+  it('批八 2/4 schema 收尾:verify_state backend_args、animation 3 值、别名标注（eval_js [桥] / query_db.sql [源码]）', () => {
     const specOf = (name: string, specs = REST_TOOL_SPECS) =>
       specs.find((spec) => spec.name === name)!;
     const propOf = (name: string, key: string) =>
@@ -337,11 +341,13 @@ describe('dsh-victauri 工具面契约', () => {
     expect(backendArgs?.description).toMatch(/\[文档/);
     expect(specOf('verify_state').description).toContain('backend_args');
 
-    // P2-4/P2-5 别名标注 [文档]→[桥]（上游两源均无该别名，属插件本地归一）
+    // P2-4 eval_js.expression：上游 webview_params.rs 只有 code，别名是插件自有 → [桥]
     expect(propOf('eval_js', 'expression')?.description).toMatch(/\[桥/);
     expect(propOf('eval_js', 'expression')?.description).not.toMatch(/\[文档/);
-    expect(propOf('query_db', 'sql')?.description).toMatch(/\[桥/);
-    expect(propOf('query_db', 'sql')?.description).not.toMatch(/\[文档/);
+    // P2-5 query_db.sql：上游 0.10.2 backend_params.rs:130 / 0.8.8 :117 是正式 serde alias → [源码]
+    // （批十 1/2 勘误：此前写成「插件自有 [桥]」是事实错误）
+    expect(propOf('query_db', 'sql')?.description).toMatch(/\[源码/);
+    expect(propOf('query_db', 'sql')?.description).not.toMatch(/\[桥/);
 
     // P1-2 animation.action 移除已废弃 clear（0.10.3 基线三动作）+ 0.8.8 兼容口径
     const animation = specOf('animation', COMPOUND_TOOL_SPECS);
@@ -537,5 +543,105 @@ describe('dsh-victauri 工具面契约', () => {
     expect(points?.description).toContain('以 schema 为准');
     expect(points?.description).toContain('[源码 0.10.2]');
     expect(points?.description).toContain('[文档 0.10.3]');
+  });
+
+  it('批十 1/2 别名口径收口:query_db.sql 是上游正式 serde alias、webview_label/checkpoint_label 别名登记', () => {
+    const specOf = (name: string, specs = REST_TOOL_SPECS) =>
+      specs.find((spec) => spec.name === name)!;
+    const propOf = (name: string, key: string, specs = REST_TOOL_SPECS) =>
+      specOf(name, specs).parameters[key] as
+        { description?: string } | undefined;
+
+    // P2-5 勘误：query_db 的 sql 是上游正式 serde alias
+    // （0.10.2 backend_params.rs:130 / 0.8.8 :117 `#[serde(alias = "sql")] pub query: String`），
+    // 此前 catalog 写「上游只接受 query、无 sql 别名」与源码事实相反。
+    const queryDb = specOf('query_db');
+    expect(queryDb.description).toContain('上游正式 serde alias');
+    expect(queryDb.description).toContain('[源码');
+    expect(queryDb.description).toContain('duplicate field');
+    expect(queryDb.description).not.toContain('均只接受 query');
+    expect(queryDb.description).not.toContain('sql 是本插件自有的兼容别名');
+    // 事实锚点：锁上游 crate 行号（措辞可调，行号不可漂）
+    expect(queryDb.description).toContain('backend_params.rs:130');
+    expect(queryDb.description).toContain('0.8.8 :117');
+    // 本地归一也是对外承诺：必须写明「保留 query、移除 sql」与实现位置
+    expect(queryDb.description).toContain('文档省略');
+    expect(queryDb.description).toContain('ARG_ALIASES');
+    expect(queryDb.description).toContain('移除 sql');
+    // 参数描述同样要写明本地归一（否则删掉这半句仍全绿）
+    const sqlDesc = propOf('query_db', 'sql')?.description;
+    expect(sqlDesc).toBeDefined();
+    expect(sqlDesc).toContain('duplicate field');
+    expect(sqlDesc).toContain('ARG_ALIASES');
+    expect(sqlDesc).toContain('移除 sql');
+    // 别名归属只对第一分句做否定断言（后续半句描述插件侧本地归一，
+    // 未来若标 [桥:本地归一] 不应假红）
+    const sqlAliasClause = (sqlDesc ?? '').split(';')[0] ?? '';
+    expect(sqlAliasClause).toMatch(/\[源码/);
+    expect(sqlAliasClause).not.toMatch(/\[桥/);
+    // 别名归属不得写成「插件自有 / 兼容别名」（那是上游正式别名，不是插件自造）
+    expect(sqlAliasClause).not.toContain('插件自有');
+    expect(sqlAliasClause).not.toContain('兼容别名');
+
+    // P2-4 不变：eval_js.expression 仍是插件自有别名（上游 webview_params.rs 只有 code）
+    expect(propOf('eval_js', 'expression')?.description).toMatch(/\[桥/);
+    expect(propOf('eval_js', 'expression')?.description).not.toMatch(/\[源码/);
+    // 工具级 description 也要声明归属（参数级锁不住这半句）
+    expect(specOf('eval_js').description).toContain(
+      'expression 是本插件自有的兼容别名',
+    );
+
+    // M-6 改判后落地：上游 webview_label 的正式别名 window/window_label 必须在描述里登记
+    // （断言整串，避免 'window' 被 'window_label' 的子串满足而空洞通过）
+    const webviewDesc = propOf('eval_js', 'webview_label')?.description;
+    expect(webviewDesc).toBeDefined();
+    expect(webviewDesc).toContain('window / window_label');
+    expect(webviewDesc).toContain('上游正式别名');
+    expect(webviewDesc).toMatch(/\[源码/);
+    expect(webviewDesc).toContain('webview_params.rs:11');
+
+    // recording checkpoint_label 的上游正式别名 label
+    const checkpointLabel = propOf(
+      'recording',
+      'checkpoint_label',
+      COMPOUND_TOOL_SPECS,
+    )?.description;
+    expect(checkpointLabel).toBeDefined();
+    expect(checkpointLabel).toContain('别名 label');
+    expect(checkpointLabel).toContain('快照标签');
+    expect(checkpointLabel).toMatch(/\[源码/);
+    expect(checkpointLabel).not.toMatch(/\[桥/);
+    expect(checkpointLabel).toContain('compound_params.rs:454');
+
+    // explain 的 webview_label 同属上游正式别名（别名 window），口径也应登记
+    const explainWebview = propOf(
+      'explain',
+      'webview_label',
+      COMPOUND_TOOL_SPECS,
+    )?.description;
+    expect(explainWebview).toBeDefined();
+    expect(explainWebview).toContain('别名 window');
+  });
+
+  it('批十 1/2 文档守护:差距清单与上游反馈记录别名勘误,且不残留被推翻的旧表述', () => {
+    const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+    const readDoc = (relative: string) =>
+      readFileSync(join(repoRoot, relative), 'utf8');
+
+    const gapList = readDoc('docs/audit/2026-11-05/gap-list.md');
+    expect(gapList).toContain('【2026-11-05 勘误，批十 1/2】');
+    expect(gapList).toContain('【2026-11-05 改判，批十 1/2】');
+
+    const feedback = readDoc('docs/upstream-feedback-0.10.3.md');
+    expect(feedback).toContain('### 7. 正式别名');
+    expect(feedback).toContain('纯文档缺口');
+    expect(feedback).toContain('粒度差异');
+    // 被推翻的旧表述不得残留在对外文档里
+    expect(feedback).not.toContain('sql 是本插件自有的兼容别名');
+    expect(gapList).not.toContain('sql 是本插件自有的兼容别名');
+
+    // 工具表的 query_db 口径与 catalog 一致（上游正式 serde alias）
+    const toolsDoc = readDoc('docs/TOOLS.md');
+    expect(toolsDoc).toContain('上游正式 serde alias');
   });
 });

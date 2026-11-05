@@ -34,6 +34,14 @@
   标注 [文档]，但 0.10.3 doc:106-138 与 0.10.2 webview_params.rs:7-9 均只有 code，无 expression。
   应改标 [桥]/[实测]（本地归一实现 src/tools/standalone/bridge.ts:47-52）。
 - 🟢 **P2-5 query_db.sql 别名同样误标 [文档]**——src/tools/standalone/catalog.ts:306；两源均只有 query。
+  **【2026-11-05 勘误，批十 1/2】** 上游 `sql` 是**正式 serde alias**，
+  不是「两源均只有 query」：0.10.2 `backend_params.rs:130`、0.8.8 `backend_params.rs:117`
+  均为 `#[serde(alias = "sql")] pub query: String`（doc-comment 原文
+  「Accepts `sql` as an alias — the intuitive name an agent reaches for first」）。
+  插件 catalog 已改标 [源码]；0.10.3 文档参数表未列 sql 属**文档省略**
+  （已写入 docs/upstream-feedback-0.10.3.md 作为上游文档反馈）。
+  另：eval_js.expression 无上游别名（上游 webview_params.rs 只有 code），
+  保持插件自有 [桥] 标注不变。
 - 🟢 **P2-3 find_elements 四新参（attribute/attribute_value/text_exact/include_hidden）为 CHANGELOG 单源**
   ——CHANGELOG 0.10.3:59-60 有、0.10.3 文档参数表与 0.10.2 源码均无；标注已是 [CHANGELOG]，
   属正确单源标注，仅记录证据强度。
@@ -66,6 +74,22 @@
   `{"totally_unknown_key":1}`；bridge.ts:112 注释「服务端拒未知字段」仅对 2 条登记别名生效。
 - 🟡 **M-6 上游正式别名未接**——window/window_label、checkpoint_label（上游 tools-reference 行 13/607）；
   插件别名表仅 eval_js/query_db 两条（src/tools/standalone/bridge.ts:47-52）。
+  **【2026-11-05 改判，批十 1/2】** 复核上游 crate 源码后**改判**：这些别名由上游
+  serde `#[serde(alias = …)]` 直接识别（webview_label 带 alias window/window_label：
+  0.10.2 webview_params.rs:11,:38、other_params.rs:105,:149,:196,:204、
+  compound_params.rs:137,:184,:343,:391,:468,:522,:561,:682,:728,:784,:870、
+  introspection_params.rs:75、verification_params.rs:18,:26,:43、backend_params.rs:59；
+  0.10.3 webview_params.rs:11,:38；0.8.8 webview_params.rs:11,:38 与 backend_params.rs:57 同；
+  recording checkpoint_label 带 alias label：0.10.2 compound_params.rs:454、0.10.3 :458），
+  **插件无需做本地归一**即可被服务端识别；真实缺口只是**插件参数描述层未登记
+  这些别名键**（schema properties 仍只暴露主名 `webview_label`/`checkpoint_label`，
+  但参数对象是开放的——`@deepseek-ai/dsh-tools` 的 `parameterSchemaSpecToJsonSchema`
+  （node_modules/@deepseek-ai/dsh-tools/lib/types/schema.js:238-247）不设
+  `additionalProperties:false`，且 src/tools/standalone/bridge.ts:109-111 原样透传入参，
+  因此模型可真的传 `window`/`window_label`/`label` 并被上游 serde alias 识别），
+  模型无从得知可以传这些别名键。→ 本卡已在参数描述中登记别名
+  （src/tools/standalone/catalog.ts 的 WEBVIEW 常量、src/tools/compound/catalog.ts 的
+  checkpoint_label），**M-6 已修**。
 - 🟢 **L-1 cli_status 的 kind 词汇表与 errors.ts 不统一**——src/tools/cli-status.ts:65-69。
   **【2026-11-05 澄清，批九 3/3】** 二者**语义域不同、不是同一层**：cli_status 的
   not_found/cli-error/timeout 属「CLI 探测域」（CLI 装没装、跑不跑得起来），
@@ -189,17 +213,22 @@
   需设计评估 → backlog（未授权执行）。
 - **M-6 别名扩展（window/window_label/checkpoint_label）**：行为增强，涉及 alias 表与测试 →
   可实现但优先级低，与 T 组测试增强同批处理。
+  **【2026-11-05 改判，批十 1/2】** 复核上游 crate 源码后：该别名由上游 serde alias 直接识别，
+  插件不需本地归一；真实缺口是 schema 未登记别名键 → 已由批十 1/2 修复（描述层登记），
+  **M-6 结案**。
 
 ## 建卡映射（批八）
 
-| 差距                                                                | 卡                          | 类型                   |
-| ------------------------------------------------------------------- | --------------------------- | ---------------------- |
-| S-3 renderJson 丢 cursor                                            | 批八 1/4                    | todo（当场执行）       |
-| P1-1 backend_args + P1-2 animation clear + P2-4/P2-5 别名标注       | 批八 2/4                    | todo（当场执行）       |
-| T-1/T-2/T-3/T-4/T-5 测试增强 + D-5 doctor 口径                      | 批八 3/4                    | todo（当场执行）       |
-| D-1/D-2/D-3/D-4 文档同步 + E-2 demo-app README                      | 批八 4/4                    | todo（当场执行）       |
-| L-5 css/selector 主别名方向（勘误后按双层口径改描述）               | 批九 1/3                    | todo（当场执行）       |
-| E-1 smoke 后端日志链路检查                                          | 批九 2/3                    | todo（当场执行）       |
-| L-5/L-7 结论勘误 + M-1 归属澄清 + L-1 kind 词汇表边界               | 批九 3/3                    | todo（当场执行）       |
-| S-1/S-2 错误信封 + 401 重发现（**含 M-1 kind 映射与 status 透出**） | backlog-A t-mw2eut5k-6k1elc | backlog（需用户批准）  |
-| M-2/M-3/M-4/M-5/M-6/M-7/M-8/M-9/M-10 + 其余 L 组                    | backlog-B t-mw2evd2u-0dukch | backlog（评估/增强类） |
+| 差距                                                                  | 卡                          | 类型                   |
+| --------------------------------------------------------------------- | --------------------------- | ---------------------- |
+| S-3 renderJson 丢 cursor                                              | 批八 1/4                    | todo（当场执行）       |
+| P1-1 backend_args + P1-2 animation clear + P2-4/P2-5 别名标注         | 批八 2/4                    | todo（当场执行）       |
+| T-1/T-2/T-3/T-4/T-5 测试增强 + D-5 doctor 口径                        | 批八 3/4                    | todo（当场执行）       |
+| D-1/D-2/D-3/D-4 文档同步 + E-2 demo-app README                        | 批八 4/4                    | todo（当场执行）       |
+| L-5 css/selector 主别名方向（勘误后按双层口径改描述）                 | 批九 1/3                    | todo（当场执行）       |
+| E-1 smoke 后端日志链路检查                                            | 批九 2/3                    | todo（当场执行）       |
+| L-5/L-7 结论勘误 + M-1 归属澄清 + L-1 kind 词汇表边界                 | 批九 3/3                    | todo（当场执行）       |
+| P2-5 勘误 + M-6 别名登记（serde alias 口径收口）                      | 批十 1/2                    | todo（当场执行）       |
+| T-6 route 0.10.3 细化口径（ipc_warning/mock_unreadable/add 拒绝）     | 批十 2/2                    | todo（当场执行）       |
+| S-1/S-2 错误信封 + 401 重发现（**含 M-1 kind 映射与 status 透出**）   | backlog-A t-mw2eut5k-6k1elc | backlog（需用户批准）  |
+| M-2/M-3/M-4/M-5/M-7/M-8/M-9/M-10 + 其余 L 组（M-6 已由批十 1/2 结案） | backlog-B t-mw2evd2u-0dukch | backlog（评估/增强类） |
