@@ -69,7 +69,7 @@
   src/tools/standalone/bridge.ts:137,141（错误信封只在 catch 路径生效）。复现：假上游返回
   `{"error":"eval timed out after 30s"}` → 工具返回裸字符串，无 kind/hint，与 docs/TOOLS.md:318/344/346
   承诺的 `{kind,message,hint}` 不符。**修复方向**：client/bridge 层识别 `error` 键响应并归一为
-  VictauriError 信封。
+  VictauriError 信封。**【2026-11-05 已修，backlog-A】** 见下方 S-2 条目的联合注记（649b392）。
 - 🟡 **M-1 kind 词汇表缺 auth/not-found/rate-limited/invalid-params**——src/errors.ts:33-47 仅 7 值；
   src/client.ts:106-112 把 400/401/403/404/429 同归 http-error 且丢弃 VictauriHttpError.status
   （errors.ts:55-68 实际持有 status）。
@@ -107,6 +107,12 @@
     **未授权执行，需用户批准后才能认领**。
   - **实现层静默透传本身**（是否改为白名单/报错）→ 归 backlog 卡 t-mw2evd2u-0dukch——
     **未授权执行，需用户批准后才能认领**。
+    **【2026-11-05 已修（可观测性方案），批十三 2/2】** 用户裁决授权后按「不改透传语义、只补
+    可观测性」实施：bridge.ts `collectIgnoredArgs` 收集「schema 未声明且非上游正式别名」的键，
+    结果顶层附加 `ignored_args`（排序确定；图像通道与错误信封不附加；上游结果自带同名键时
+    改用 `ignored_args_plugin` 备用键）。V2 中-1 修复后 known 集合纳入上游 serde 别名
+    （UPSTREAM_WINDOW_ALIAS_TOOLS 23 工具 + UPSTREAM_EXTRA_ALIASES），消除 eval_js{window}、
+    recording{label} 误报。落地提交 1010ca9（t-mw36ua79-1fkccm，in_review）。
 - 🟡 **M-6 上游正式别名未接**——window/window_label、checkpoint_label（上游 tools-reference 行 13/607）；
   插件别名表仅 eval_js/query_db 两条（src/tools/standalone/bridge.ts:47-52）。
   **【2026-11-05 改判，批十 1/2】** 复核上游 crate 源码后**改判**：这些别名由上游
@@ -144,10 +150,22 @@
   discovery 写入新 token 后 call#2/#3 仍 401。README.md:73 自称「连接失败会重置缓存」与实现不符
   （失败会重置，成功永不失效）。上游 0.10.3 起 /info 报告 pid 供 stale discovery 重判。
   **修复方向**：401/连接错误时复位 clientPromise + discovery 重扫。
+  **【2026-11-05 已修，backlog-A】** S-1/S-2/M-1 三条经用户裁决授权后一并实施（649b392，
+  t-mw2eut5k-6k1elc，in_review）：S-1 = callTool 200 分支识别「object + 'error' 键 + 无
+  'result' 键」→ 抛 VictauriError('tool-error')（信封生效）；S-2 = 新增
+  ReconnectingVictauriClient 包装（shouldResetClient：VictauriHttpError 401/403 或
+  kind='http-error' → 复位 clientPromise 重跑 discovery，Timeout 不复位）；
+  M-1 = kind 7→11 值（+invalid-params/auth/not-found/rate-limited）+ kindForStatus
+  机械映射 + 信封可选 status 键。详见该卡与 risk-t-mw2eut5k-6k1elc.md。
 - 🟡 **M-5 eval 类无 per-tool 超时旋钮，固定 30s**——standalone 20 + compound 15 中除
   wait_for/introspect/trace 外均未设 requestBudgetMs（字段 src/tools/standalone/catalog.ts:41）；
   上游 configuration.md：eval 默认 30s 可配至 300s（MAX_EVAL_TIMEOUT_SECS=300 + VICTAURI_EVAL_TIMEOUT）
   → app 端调大后插件 30s 即放弃且服务端仍在跑。
+  **【2026-11-05 已修（声明预算方案），批十三 2/2】** 查证上游 eval_js 无 per-call timeout
+  参数（0.10.3 webview_params.rs:7-13）→ 按清单「不支持」分支声明
+  requestBudgetMs:45_000（默认档留余量，不追 300s 上限），注释与描述写明覆盖语义与错位。
+  落地提交 1010ca9（t-mw36ua79-1fkccm，in_review）；app 端调大场景仍先放弃（M-8 架构级，
+  暂缓）。
 - 🟡 **M-7 discovery 不校验 PID 存活、不核对 /info pid**——src/discovery.ts:81-108,143-188（:178-179
   目录名当 pid）、:194-210；src/client.ts:68-74 只校验是对象；复现：pid=999999 仍被接受。
 - 🟡 **M-8 客户端超时只中止本地 fetch 不取消服务端执行**——src/client.ts:166-167,181-183；超时后
@@ -157,6 +175,11 @@
 - 🟡 **M-10 CLI 子进程只 kill 一次、无 SIGKILL 升级、不杀子孙进程、timeout_ms 无上限**——
   src/cli.ts:102-105；src/tools/cli.ts:99-102（仅 type:'integer'）、:277 宿主 300s；timeout_ms=3600000
   时宿主放弃、子进程继续跑。
+  **【2026-11-05 部分已修（M-10a 夹取），批十三 1/2】** timeout_ms 无上限已修：工具层
+  `Math.min(Math.max(requestedTimeoutMs,1), CLI_MAX_TIMEOUT_MS=300_000)`（CLI_MAX_TIMEOUT_MS
+  与宿主工具声明 timeoutMs 同源），超限夹到宿主预算，孤儿窗口从无界缩到 ≤探测耗时。
+  kill 无升级/不杀子孙属 M-10b（架构级，backlog-B 暂缓，见 risk-t-mw36ua1v-848yxm.md R5）。
+  落地提交 48d8acb（t-mw36ua1v-848yxm，in_review）。
 - 🟢 **L-3 wait_for 预算被 120s 硬夹**——src/tools/standalone/timeout.ts:17,30-52。
 - 🟢 **L-4 trace/introspect 固定 90s**——src/tools/compound/catalog.ts:270,494。
 - 🟢 **L-7 animation points 默认 20 与上游文档 6 不一致**——src/tools/compound/catalog.ts:105。
@@ -171,6 +194,9 @@
   文档侧行号（:1012 / :1025）来自上游文档引用，本机无副本，**未本地复核**。
 - 🟢 **L-9 CLI stdout 上限按字符计（非字节）可略超 512KB**——src/cli.ts:10,78-91。
 - 🟢 **L-10 图像落盘无字节上限**——src/tools/standalone/image.ts:26,82-97。
+  **【2026-11-05 已修，批十三 1/2】** `IMAGE_SAVE_MAX_BYTES = 20MiB` 上限：saveImage 超限
+  抛错不落盘，经 applyImageChannel 回退 `image_save_error` 信封（原文保留）。落地提交
+  48d8acb（t-mw36ua1v-848yxm，in_review）。
 
 ## 面 4.5：功能性缺陷（渲染层，横跨契约与教学面）
 
@@ -320,20 +346,22 @@
 
 ## 建卡映射（批八及以后）
 
-| 差距                                                                                                                                                                         | 卡                          | 类型                   | 状态 / 提交                         |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ---------------------- | ----------------------------------- |
-| S-3 renderJson 丢 cursor                                                                                                                                                     | 批八 1/4                    | todo（当场执行）       | 已执行 ae52849                      |
-| P1-1 backend_args + P1-2 animation clear + P2-4/P2-5 别名标注                                                                                                                | 批八 2/4                    | todo（当场执行）       | 已执行 d03646a                      |
-| T-1/T-2/T-3/T-4/T-5 测试增强 + D-5 doctor 口径                                                                                                                               | 批八 3/4                    | todo（当场执行）       | 已执行 6e69c90/61bd44b              |
-| D-1/D-2/D-3/D-4 文档同步 + E-2 demo-app README                                                                                                                               | 批八 4/4                    | todo（当场执行）       | 已执行 fb3cb97                      |
-| L-5 css/selector 主别名方向（勘误后按双层口径改描述）                                                                                                                        | 批九 1/3                    | todo（当场执行）       | 已执行 71112e7                      |
-| E-1 smoke 后端日志链路检查                                                                                                                                                   | 批九 2/3                    | todo（当场执行）       | 已执行 4a60d7c                      |
-| L-5/L-7 结论勘误 + M-1 归属澄清 + L-1 kind 词汇表边界                                                                                                                        | 批九 3/3                    | todo（当场执行）       | 已执行 10c5522                      |
-| P2-5 勘误 + M-6 别名登记（serde alias 口径收口）                                                                                                                             | 批十 1/2                    | todo（当场执行）       | 已执行 82d1afe                      |
-| T-6 route 0.10.3 细化口径（ipc_warning/mock_unreadable/add 拒绝）                                                                                                            | 批十 2/2                    | todo（当场执行）       | 已执行 36dea69                      |
-| route 0.10.3 行为边界小节 + 数组结果形状小节 + README 冒烟口径同步（P3-5 口径解耦实由 be544f6/eb549f3 落地，本卡只回填其状态）                                               | 批十一 1/3                  | todo（当场执行）       | 已执行 e5f11d7（t-mw319n85-0anjn0） |
-| P3-5/M-2/M-3/M-4/L-11 状态回填 + 归属澄清 + 映射表登记                                                                                                                       | 批十一 2/3                  | todo（当场执行）       | 已执行 de85d4b（t-mw31a0yi-gp1khz） |
-| 数组型工具描述补 {items} 统一说明（standalone + compound 两处 catalog）                                                                                                      | 批十一 3/3                  | todo（当场执行）       | 已执行 e98546f（t-mw31b5gs-0czoj5） |
-| docs/TOOLS.md 数组影响面清单订正（移除误列的 trace/fault、补 5 个漏列工具）+ 文档影响面同源护栏                                                                              | 批十二 1/1                  | todo（当场执行）       | 已执行 855f6c2（t-mw351p2r-b6rxos） |
-| S-1/S-2 错误信封 + 401 重发现（**含 M-1 kind 映射与 status 透出**）                                                                                                          | backlog-A t-mw2eut5k-6k1elc | backlog（需用户批准）  | 未执行（waitingForHuman）           |
-| M-2/M-3/M-4 实现层 + M-5/M-7/M-8/M-9/M-10 + L-3/L-4/L-9/L-10/L-11（M-2/M-3/M-4 的描述层已由批十一 1/3 结案；M-6 已在批十 1/2 整体结案故不在本卡范围；T-6 已在批十 2/2 结案） | backlog-B t-mw2evd2u-0dukch | backlog（评估/增强类） | 未执行（waitingForHuman）           |
+| 差距                                                                                                                                                                         | 卡                          | 类型                                                   | 状态 / 提交                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------- |
+| S-3 renderJson 丢 cursor                                                                                                                                                     | 批八 1/4                    | todo（当场执行）                                       | 已执行 ae52849                                                    |
+| P1-1 backend_args + P1-2 animation clear + P2-4/P2-5 别名标注                                                                                                                | 批八 2/4                    | todo（当场执行）                                       | 已执行 d03646a                                                    |
+| T-1/T-2/T-3/T-4/T-5 测试增强 + D-5 doctor 口径                                                                                                                               | 批八 3/4                    | todo（当场执行）                                       | 已执行 6e69c90/61bd44b                                            |
+| D-1/D-2/D-3/D-4 文档同步 + E-2 demo-app README                                                                                                                               | 批八 4/4                    | todo（当场执行）                                       | 已执行 fb3cb97                                                    |
+| L-5 css/selector 主别名方向（勘误后按双层口径改描述）                                                                                                                        | 批九 1/3                    | todo（当场执行）                                       | 已执行 71112e7                                                    |
+| E-1 smoke 后端日志链路检查                                                                                                                                                   | 批九 2/3                    | todo（当场执行）                                       | 已执行 4a60d7c                                                    |
+| L-5/L-7 结论勘误 + M-1 归属澄清 + L-1 kind 词汇表边界                                                                                                                        | 批九 3/3                    | todo（当场执行）                                       | 已执行 10c5522                                                    |
+| P2-5 勘误 + M-6 别名登记（serde alias 口径收口）                                                                                                                             | 批十 1/2                    | todo（当场执行）                                       | 已执行 82d1afe                                                    |
+| T-6 route 0.10.3 细化口径（ipc_warning/mock_unreadable/add 拒绝）                                                                                                            | 批十 2/2                    | todo（当场执行）                                       | 已执行 36dea69                                                    |
+| route 0.10.3 行为边界小节 + 数组结果形状小节 + README 冒烟口径同步（P3-5 口径解耦实由 be544f6/eb549f3 落地，本卡只回填其状态）                                               | 批十一 1/3                  | todo（当场执行）                                       | 已执行 e5f11d7（t-mw319n85-0anjn0）                               |
+| P3-5/M-2/M-3/M-4/L-11 状态回填 + 归属澄清 + 映射表登记                                                                                                                       | 批十一 2/3                  | todo（当场执行）                                       | 已执行 de85d4b（t-mw31a0yi-gp1khz）                               |
+| 数组型工具描述补 {items} 统一说明（standalone + compound 两处 catalog）                                                                                                      | 批十一 3/3                  | todo（当场执行）                                       | 已执行 e98546f（t-mw31b5gs-0czoj5）                               |
+| docs/TOOLS.md 数组影响面清单订正（移除误列的 trace/fault、补 5 个漏列工具）+ 文档影响面同源护栏                                                                              | 批十二 1/1                  | todo（当场执行）                                       | 已执行 855f6c2（t-mw351p2r-b6rxos）                               |
+| S-1/S-2 错误信封 + 401 重发现（**含 M-1 kind 映射与 status 透出**）                                                                                                          | backlog-A t-mw2eut5k-6k1elc | backlog → todo（用户 2026-11-05 裁决授权）             | 已执行 649b392（in_review v18）                                   |
+| M-2/M-3/M-4 实现层 + M-5/M-7/M-8/M-9/M-10 + L-3/L-4/L-9/L-10/L-11（M-2/M-3/M-4 的描述层已由批十一 1/3 结案；M-6 已在批十 1/2 整体结案故不在本卡范围；T-6 已在批十 2/2 结案） | backlog-B t-mw2evd2u-0dukch | backlog → 评估后拆卡（用户圈定：小改全做、需设计暂缓） | 评估提案落盘；小改拆批十三 1/2+2/2（见下两行）；需设计/架构级暂缓 |
+| M-10a CLI timeout_ms 夹取宿主预算 + L-10 图像落盘 20MiB 上限（backlog-B 小改 1）                                                                                             | 批十三 1/2                  | todo（当场执行）                                       | 已执行 48d8acb（t-mw36ua1v-848yxm，in_review v13）                |
+| M-4 ignored_args 提示 + M-5 eval_js 45s 预算声明（backlog-B 小改 2）                                                                                                         | 批十三 2/2                  | todo（当场执行）                                       | 已执行 1010ca9（t-mw36ua79-1fkccm，in_review v11）                |
