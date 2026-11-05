@@ -299,6 +299,6 @@
 | E-1 smoke 后端日志链路检查                                            | 批九 2/3                    | todo（当场执行）       | 已执行 4a60d7c            |
 | L-5/L-7 结论勘误 + M-1 归属澄清 + L-1 kind 词汇表边界                 | 批九 3/3                    | todo（当场执行）       | 已执行 10c5522            |
 | P2-5 勘误 + M-6 别名登记（serde alias 口径收口）                      | 批十 1/2                    | todo（当场执行）       | 已执行 82d1afe            |
-| T-6 route 0.10.3 细化口径（ipc_warning/mock_unreadable/add 拒绝）     | 批十 2/2                    | todo（当场执行）       | 已执行（批十 2/2 提交）   |
+| T-6 route 0.10.3 细化口径（ipc_warning/mock_unreadable/add 拒绝）     | 批十 2/2                    | todo（当场执行）       | 已执行 36dea69            |
 | S-1/S-2 错误信封 + 401 重发现（**含 M-1 kind 映射与 status 透出**）   | backlog-A t-mw2eut5k-6k1elc | backlog（需用户批准）  | 未执行（waitingForHuman） |
 | M-2/M-3/M-4/M-5/M-7/M-8/M-9/M-10 + 其余 L 组（M-6 已由批十 1/2 结案） | backlog-B t-mw2evd2u-0dukch | backlog（评估/增强类） | 未执行（waitingForHuman） |
