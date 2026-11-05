@@ -11,14 +11,20 @@
 上游 0.10.3 共 35 个 MCP 工具（standalone 20 + compound 15），插件 1:1 全暴露，另有 3 个插件自有
 （victauri_cli / victauri_cli_status / victauri_tools_list）合计 38。已过期枚举 1 处：
 
-- 🟡 **P1-1 verify_state 缺 `backend_args` 参数**——src/tools/standalone/catalog.ts:358-369 未声明；
+- ✅ **P1-1 verify_state 缺 `backend_args` 参数**——src/tools/standalone/catalog.ts:358-369 未声明；
   上游 tools-reference.md:234 与 victauri-plugin-0.10.2/src/mcp/verification_params.rs:16
   `pub backend_args: Option<serde_json::Value>`；桥把 catalog schema 原样下发
   （src/tools/standalone/bridge.ts:99,137），未声明即模型传不出该参数。
-- 🟡 **P1-2 animation.action 残留已废弃值 `clear`**——src/tools/compound/catalog.ts:94 仍列 4 值
+  **【2026-11-05 已修，批八 2/4，提交 d03646a】** standalone catalog 已补 `backend_args`
+  （object / additionalProperties true，描述标注 [文档 0.10.3]），contract.test.ts 有
+  「批八 2/4 schema 收尾」用例锁定其定义与来源标注。
+- ✅ **P1-2 animation.action 残留已废弃值 `clear`**——src/tools/compound/catalog.ts:94 仍列 4 值
   （list/scrub/sample/clear）；上游 0.10.3 tools-reference.md:1014 只列 list/scrub/sample（clear 是
   sample 的参数 clear:true）、0.10.2 compound_params.rs:737-746 无 Clear 枚举；0.8.8 仍有。
   基线已声明 0.10.3 → 应移除并对 0.8.8 标注兼容说明。
+  **【2026-11-05 已修，批八 2/4，提交 d03646a】** action 枚举改为 3 值
+  `['list','scrub','sample']`，描述写明 0.8.8 另有 clear、0.10.x 起废弃（清空改经 sample 的
+  `clear:true` 参数）；contract.test.ts 的 EXPECTED_ACTIONS 同步为 3 值并有断言锁定。
 - 🟢 **P3-3 assert_semantic.condition 9 值是上游文档落后于源码**（doc:344-355 只列 7；
   victauri-core-0.10.2/src/verification.rs:515-534 为 9 含 exists/type_is）——插件已正确覆盖 9 值，
   **勿回灌**，仅记录。
@@ -30,9 +36,11 @@
 
 ## 面 2：schema 三源对齐
 
-- 🟢 **P2-4 eval_js.expression 别名误标 [文档]**——src/tools/standalone/catalog.ts:154-155,161-163
+- ✅ **P2-4 eval_js.expression 别名误标 [文档]**——src/tools/standalone/catalog.ts:154-155,161-163
   标注 [文档]，但 0.10.3 doc:106-138 与 0.10.2 webview_params.rs:7-9 均只有 code，无 expression。
   应改标 [桥]/[实测]（本地归一实现 src/tools/standalone/bridge.ts:47-52）。
+  **【2026-11-05 已修，批十 1/2，提交 82d1afe】** expression 描述已改标「插件自有的兼容别名 [桥]」，
+  并说明自动归一为 code；contract.test.ts 断言其含 `[桥]` 且不含 `[源码]`（保持上游无别名的口径）。
 - 🟢 **P2-5 query_db.sql 别名同样误标 [文档]**——src/tools/standalone/catalog.ts:306；两源均只有 query。
   **【2026-11-05 勘误，批十 1/2】** 上游 `sql` 是**正式 serde alias**，
   不是「两源均只有 query」：0.10.2 `backend_params.rs:130`、0.8.8 `backend_params.rs:117`
@@ -135,30 +143,68 @@
 
 ## 面 4.5：功能性缺陷（渲染层，横跨契约与教学面）
 
-- 🔴 **S-3 renderJson 只截头 6000 字符，with_logs 的 backend_log_cursor 被丢弃**——
+- ✅ **S-3 renderJson 只截头 6000 字符，with_logs 的 backend_log_cursor 被丢弃**——
   src/tools/standalone/render.ts:9-21（`text.slice(0, RENDER_MAX_CHARS)`）+
   src/tools/standalone/bridge.ts:102（output.render=renderJson）。复现：构造
   `{result, backend_logs(120 条,20865 字符), backend_log_cursor}` 载荷 → 渲染文本不含
   `backend_log_cursor` → 批六 1/4 教学的三段式第②步（wait_for since_seq=cursor）拿不到游标。
   **修复方向**：渲染前对 backend_logs 摘要化（保留前 N 条 + 显式带出 cursor），或 renderJson 支持
   尾部保底键；补回归用例锁「含 cursor」。
+  **【2026-11-05 已修，批八 1/4，提交 ae52849】** render.ts 新增 `summarizeBackendLogsPayload`
+  - `BACKEND_LOG_PREVIEW_COUNT=5`：backend_logs 超过 5 条时保留前 5 条，其余键（cursor/next_seq 等）
+    重排在前原样保留，并附摘要说明指向 victauri_logs 分页；≤5 条时原样返回。
+    src/tools/standalone/standalone.test.ts 有回归用例锁「渲染文本含 backend_log_cursor」。
 
 ## 面 5：工程质量与测试
 
-- 🟡 **T-1 闭集枚举的客户端前置拒绝无负向断言**——wait_for condition 枚举（catalog.ts:390 闭集）：
+- ✅ **T-1 闭集枚举的客户端前置拒绝无负向断言**——wait_for condition 枚举（catalog.ts:390 闭集）：
   `condition:'bogus'` → ToolArgsError `must be one of`，缺 condition → `missing required property`，
   请求不发（callTool 不被调用）——standalone.test.ts 无此负向用例。
-- 🟡 **T-2 来源标注断言过弱**——contract.test.ts:279-281 任一标签即过；建议 [tool,key,expectedTag]
+  **【2026-11-05 已修，批八 3/4，提交 6e69c90】** standalone.test.ts 已补三条负向用例
+  （bogus → `/must be one of/`、缺 condition → `/missing required property "condition"/`、
+  `since_seq:'42'` → `/must be an integer/`），并断言 `calls.length === 0`（请求确未发出）。
+- ✅ **T-2 来源标注断言过弱**——contract.test.ts:279-281 任一标签即过；建议 [tool,key,expectedTag]
   三元组逐参精确断言。
-- 🟡 **T-3 invoke_command.timeout_ms 与本通道 REST 预算脱钩无断言**——实测
+  **【2026-11-05 已修，批八 3/4，提交 6e69c90】** contract.test.ts 改为 [tool, key, expectedTag]
+  三元组逐参精确断言（每个新参分别锁定其来源标注），不再「任一标签即过」。
+- ✅ **T-3 invoke_command.timeout_ms 与本通道 REST 预算脱钩无断言**——实测
   `resolveRequestBudgetMs('invoke_command',{timeout_ms:120000})===undefined`
   （src/tools/standalone/timeout.ts:30-52）；timeout.test.ts 无此锁定。
-- 🟢 **T-4 闭集 tripwire 注释缺失**——contract.test.ts:234-245 与 catalog.ts:391-402 同一份字面量
+  **【2026-11-05 已修，批八 3/4，提交 6e69c90】** timeout.test.ts 补锁定
+  `resolveRequestBudgetMs('invoke_command',{timeout_ms:120_000}) === undefined` 与
+  `('wait_for',{timeout_ms:120_000}) === 120_000`；standalone.test.ts 的 mockClient 记录第三参 budget，
+  断言 invoke_command.timeout_ms **不改变**本通道的 REST 预算（30s / 工具级上限 120s）。
+- ✅ **T-4 闭集 tripwire 注释缺失**——contract.test.ts:234-245 与 catalog.ts:391-402 同一份字面量
   复制，应注释「闭集契约而非上游快照」。
-- 🟢 **T-5 compound/bridge 运行时透传 0 测试**——建议新建 src/tools/compound/bridge.test.ts
+  **【2026-11-05 已修，批八 3/4，提交 6e69c90】** contract.test.ts 该处已加注释说明这是
+  「闭集契约（客户端前置校验）而非上游快照」，上游新增条件需随插件升级才能用。
+- ✅ **T-5 compound/bridge 运行时透传 0 测试**——建议新建 src/tools/compound/bridge.test.ts
   （dsh-tools 校验边界：since_seq:'7' 抛 ToolArgsError、未知 action 报枚举、未知顶层参数放行）。
-- 🟢 **T-6 route 0.10.3 细化口径未覆盖**——regex 重复组 add 时被拒、mock body 不可读时 add 拒绝
+  **【2026-11-05 已修，批八 3/4，提交 6e69c90】** 已新建 src/tools/compound/bridge.test.ts，
+  覆盖复合工具运行时透传与 dsh-tools 参数校验边界（since_seq 非整数报 ToolArgsError、
+  未知 action 报枚举错误、未知顶层参数放行）。
+- ✅ **T-6 route 0.10.3 细化口径未覆盖**（已由批十 2/2 修复）——regex 重复组 add 时被拒、mock body 不可读时 add 拒绝
   （mock_unreadable）、宽 pattern 给 ipc_warning（批六 2/4 V2-A 低-10）。
+  **【2026-11-05 已修，批十 2/2】** 插件描述已补四类口径（src/tools/compound/catalog.ts route 描述）：
+  - `add`（0.10.x 服务端的 fulfill 规则）拒绝两类规则——pattern 命中 IPC host 且 mock 不可读
+    （无 body / 非 JSON body / 204+application/json），或 mock 不被 `Response` 构造器接受
+    （header 名或值非法、非 ByteString `status_text`）[文档 0.10.3]；
+  - 更宽 pattern（如 `greet`、`*/greet`）被接受；**当该 mock 同样不可读时** add 返回 `ipc_warning`，
+    命中时服务端回 Tauri 错误并记 `mock_unreadable`、真实命令不执行
+    [文档 0.10.3] + [源码 0.10.2 `js_bridge.rs:1886-1889`]；
+  - 正则重复捕获组（如 `(a+)+`）在 `add` 时被拒（会挂起页面，JavaScript 无正则超时）
+    [源码 0.10.3 `js_bridge.rs:3552`]，0.10.2 及以前没有此校验（本机可核 0.8.8 / 0.10.2 均无）；
+  - `ipc_warning`/`mock_unreadable` 是 0.10.x 引入的细化，0.8.8 服务端没有这两项
+    （本机可核 0.8.8 无、0.10.2 有）。
+    **证据强度说明**：源码侧行号与文案**已在本机 cargo registry 逐条复核**（0.10.3 `js_bridge.rs:791-806`
+    判定注释与 `:3548-3558` 拒绝实现、`:1225` ipcMockUnparsable、`:1960`、`:3586-3613`、`:4770`；
+    0.10.2 `js_bridge.rs:803-812`、`:1258`、`:1860-1890`；0.8.8 `js_bridge.rs:684-704` 的 addRoute
+    只有 pattern 校验、无任何拒绝与 IPC 细化）；文档侧行号
+    （`.agents/tmp/upstream-tools-reference-0.10.3.md:780-807`）来自抓取副本，**已由批十 2/2 的
+    独立审阅逐句复核属实**。
+    口径来源已按「不得把单源证据冒充成另一类」标注：文档与源码分别标注，route 描述内**未**沿用
+    「[CHANGELOG 0.10.3] 单源」写法（该写法已作废——0.10.3 有源码实现；catalog 文件头那句
+    「以 [文档 0.10.3] + [CHANGELOG 0.10.3] 为基线」是整档基线双源声明，与参数级来源标注不冲突）。
 - 🟢 **L-5 find_elements 的 css/selector 双声明不归一**——src/tools/standalone/catalog.ts:179,191。
   **【2026-11-05 勘误，批九 3/3】** 本条原描述「主别名方向写反」不准确，真实分歧是
   **上游文档层 vs 上游源码/schema 层自 0.8.8 起长期并存**：
@@ -181,27 +227,51 @@
 - ✅ **smoke 活体复核 9/9 PASS**（2026-11-05，victauri 0.10.3，pid=30924；SMOKE_SKIP_BUILD=1，
   2500ms）：health/info pid 一致/tools 35/get_plugin_info 35 启用/eval_js/dom_snapshot/invoke_command/
   无 token→401 全过。scripts/smoke.mjs 退出码 0/1/2，不进 CI。
-- 🟢 **E-1 smoke 未覆盖后端日志链路**——scripts/smoke.mjs 不含 logs backend_digest / invoke_command
+- ✅ **E-1 smoke 未覆盖后端日志链路**——scripts/smoke.mjs 不含 logs backend_digest / invoke_command
   with_logs 检查（批六 4/4 卡面允许文件不含该脚本，按纪律未夹带）；demo-app 未装 log_layer
   （活体实测 sources.structured_installed:false），补检查需先给 demo-app 装捕获源。
-- 🟢 **E-2 demo-app/README.md 工具数 35 与活体 36 不一致**——历史 e2e 报告
+  **【2026-11-05 已修，批九 2/3，提交 4a60d7c】** smoke 冒烟清单由 9 项扩到 10 项：
+  新增第 9 项 `POST /api/tools/logs {action:'backend_digest'}`（0.10.2+ 断言 result 含
+  sources/buffered），第 8 项 invoke_command 在 0.10.2+ 带上 `with_logs:true` 并断言信封内
+  backend_logs 为数组、backend_log_cursor 为数字；版本门控按 GET /info 的版本决定断言或 SKIP
+  （0.8.8 无这两个能力）。demo-app 未装 log_layer 的「无捕获源」形态亦被断言覆盖
+  （digest 仍返回 sources 与 buffered，缓冲为空，不判失败）。实测 10/10 PASS。
+- ✅ **E-2 demo-app/README.md 工具数 35 与活体 36 不一致**——历史 e2e 报告
   .agents/tmp/dsh-victauri-e2e-report.txt（2026-11-02，桥接 0.10.2）注册 36 个（当时无
   victauri_tools_list）；现在 38 个 dsh 工具 / 35 个上游工具，README 应写清口径。
+  **【2026-11-05 已修，批八 4/4，提交 fb3cb97】** demo-app/README.md 已改为双口径说明：
+  `/api/tools` 返回服务端 35 个上游工具清单，dsh 桥接后暴露 38 个 dsh 工具（= 35 上游 1:1 +
+  3 插件自有：CLI 桥 / CLI 探测 / 工具发现）；裁决保留服务端 35 为正确口径。
 - 🟢 **E-3 CI 不跑 smoke 与 Rust 构建**——.github/workflows/ci.yml 只有
   format:check/lint/typecheck/test/build；smoke 需 cargo + 活体 app，半自动设计（README 已注明），
   属有意取舍，仅记录。
 
 ## 面 2.5：文档漂移（README / docs/TOOLS.md）
 
-- 🟡 **D-1 docs/TOOLS.md:50 logs 动作表仍是 8 个**——批六 2/4 已把 catalog 扩到 11 值（+backend/
+- ✅ **D-1 docs/TOOLS.md:50 logs 动作表仍是 8 个**——批六 2/4 已把 catalog 扩到 11 值（+backend/
   backend_digest/stdout），文档表未同步。
-- 🟡 **D-2 docs/TOOLS.md:56 window 动作表仍是 6 个**——catalog 已 7 值（+introspectability）。
-- 🟡 **D-3 docs/TOOLS.md:36 wait_for 条件清单未含 log**——catalog 已 10 值闭集。
-- 🟢 **D-4 README/docs 无新参数关键词**——timeout_ms/with_logs/since_seq/backend_log_cursor/
+  **【2026-11-05 已修，批八 4/4】** docs/TOOLS.md 的 `victauri_logs` 行现列 11 个动作
+  （`console` `network` `ipc` `navigation` `dialogs` `events` `slow_ipc` `clear` `backend`
+  `backend_digest` `stdout`，后三个标注 0.10.2 起），并由 cli-hints.test.ts 的同源护栏
+  逐名断言 catalog 的 action.enum 与文档一致。
+- ✅ **D-2 docs/TOOLS.md:56 window 动作表仍是 6 个**——catalog 已 7 值（+introspectability）。
+  **【2026-11-05 已修，批八 4/4】** `victauri_window` 行现列 7 个动作，含
+  `introspectability`（并注明 `introspectable:false` + `visible:true` 几乎总是缺
+  `victauri:default` capability），同源护栏覆盖。
+- ✅ **D-3 docs/TOOLS.md:36 wait_for 条件清单未含 log**——catalog 已 10 值闭集。
+  **【2026-11-05 已修，批八 4/4】** 工具表 `victauri_wait_for` 行现写「10 值闭集，见下文
+  「后端日志与 0.10.x 新参数」」，正文列出 10 值（含 `log`，标注 0.10.2 起，并说明
+  上游新增条件需随插件升级才能用）。
+- ✅ **D-4 README/docs 无新参数关键词**——timeout_ms/with_logs/since_seq/backend_log_cursor/
   include_hidden 等批六 1/4 新参在文档零提及。
-- 🟢 **D-5 doctor --json 证据强度**——cli-hints.ts doctor notes「0.10.0 起的文档才提供 --json」：
+  **【2026-11-05 已修，批八 4/4】** README 特性段与 docs/TOOLS.md「后端日志与 0.10.x 新参数」
+  小节已覆盖 timeout_ms / with_logs / since_seq / backend_log_cursor / include_hidden，
+  并由 cli-hints.test.ts 断言两处文档均含这五个关键词。
+- ✅ **D-5 doctor --json 证据强度**——cli-hints.ts doctor notes「0.10.0 起的文档才提供 --json」：
   上游 0.10.3 main.rs doctor 仅 AppTarget(--app) 无 --json；历史实测 0.8.8 `--json` 报
   unexpected argument。表述与证据不符，应改为「0.8.8 实测无 --json；上游未证实提供」。
+  **【2026-11-05 已修，批八 3/4】** 改为无门控的恒定提示「doctor 不提供 --json 结构化输出:
+  0.8.8 实测报 unexpected argument，0.10.3 源码亦无」，README 与 docs/TOOLS.md 同步。
 
 ## 已裁决 / 不建卡项
 
@@ -217,18 +287,18 @@
   插件不需本地归一；真实缺口是 schema 未登记别名键 → 已由批十 1/2 修复（描述层登记），
   **M-6 结案**。
 
-## 建卡映射（批八）
+## 建卡映射（批八及以后）
 
-| 差距                                                                  | 卡                          | 类型                   |
-| --------------------------------------------------------------------- | --------------------------- | ---------------------- |
-| S-3 renderJson 丢 cursor                                              | 批八 1/4                    | todo（当场执行）       |
-| P1-1 backend_args + P1-2 animation clear + P2-4/P2-5 别名标注         | 批八 2/4                    | todo（当场执行）       |
-| T-1/T-2/T-3/T-4/T-5 测试增强 + D-5 doctor 口径                        | 批八 3/4                    | todo（当场执行）       |
-| D-1/D-2/D-3/D-4 文档同步 + E-2 demo-app README                        | 批八 4/4                    | todo（当场执行）       |
-| L-5 css/selector 主别名方向（勘误后按双层口径改描述）                 | 批九 1/3                    | todo（当场执行）       |
-| E-1 smoke 后端日志链路检查                                            | 批九 2/3                    | todo（当场执行）       |
-| L-5/L-7 结论勘误 + M-1 归属澄清 + L-1 kind 词汇表边界                 | 批九 3/3                    | todo（当场执行）       |
-| P2-5 勘误 + M-6 别名登记（serde alias 口径收口）                      | 批十 1/2                    | todo（当场执行）       |
-| T-6 route 0.10.3 细化口径（ipc_warning/mock_unreadable/add 拒绝）     | 批十 2/2                    | todo（当场执行）       |
-| S-1/S-2 错误信封 + 401 重发现（**含 M-1 kind 映射与 status 透出**）   | backlog-A t-mw2eut5k-6k1elc | backlog（需用户批准）  |
-| M-2/M-3/M-4/M-5/M-7/M-8/M-9/M-10 + 其余 L 组（M-6 已由批十 1/2 结案） | backlog-B t-mw2evd2u-0dukch | backlog（评估/增强类） |
+| 差距                                                                  | 卡                          | 类型                   | 状态 / 提交               |
+| --------------------------------------------------------------------- | --------------------------- | ---------------------- | ------------------------- |
+| S-3 renderJson 丢 cursor                                              | 批八 1/4                    | todo（当场执行）       | 已执行 ae52849            |
+| P1-1 backend_args + P1-2 animation clear + P2-4/P2-5 别名标注         | 批八 2/4                    | todo（当场执行）       | 已执行 d03646a            |
+| T-1/T-2/T-3/T-4/T-5 测试增强 + D-5 doctor 口径                        | 批八 3/4                    | todo（当场执行）       | 已执行 6e69c90/61bd44b    |
+| D-1/D-2/D-3/D-4 文档同步 + E-2 demo-app README                        | 批八 4/4                    | todo（当场执行）       | 已执行 fb3cb97            |
+| L-5 css/selector 主别名方向（勘误后按双层口径改描述）                 | 批九 1/3                    | todo（当场执行）       | 已执行 71112e7            |
+| E-1 smoke 后端日志链路检查                                            | 批九 2/3                    | todo（当场执行）       | 已执行 4a60d7c            |
+| L-5/L-7 结论勘误 + M-1 归属澄清 + L-1 kind 词汇表边界                 | 批九 3/3                    | todo（当场执行）       | 已执行 10c5522            |
+| P2-5 勘误 + M-6 别名登记（serde alias 口径收口）                      | 批十 1/2                    | todo（当场执行）       | 已执行 82d1afe            |
+| T-6 route 0.10.3 细化口径（ipc_warning/mock_unreadable/add 拒绝）     | 批十 2/2                    | todo（当场执行）       | 已执行（批十 2/2 提交）   |
+| S-1/S-2 错误信封 + 401 重发现（**含 M-1 kind 映射与 status 透出**）   | backlog-A t-mw2eut5k-6k1elc | backlog（需用户批准）  | 未执行（waitingForHuman） |
+| M-2/M-3/M-4/M-5/M-7/M-8/M-9/M-10 + 其余 L 组（M-6 已由批十 1/2 结案） | backlog-B t-mw2evd2u-0dukch | backlog（评估/增强类） | 未执行（waitingForHuman） |

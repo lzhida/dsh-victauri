@@ -439,6 +439,17 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       'mocked 调用不进入 ghost detection/command_catalog/coverage/command_timings，' +
       '被延迟的调用不计入 command_timings；' +
       'add 返回 ipc_note 提示规则可能命中 IPC URL；postMessage IPC 不受影响。' +
+      'add（0.10.x 服务端的 fulfill 规则）会拒绝两类规则：pattern 命中 IPC host 且 mock ' +
+      '不可读（无 body、非 JSON body、204+application/json），或 mock 不被 Response 构造器 ' +
+      '接受（header 名或值非法、非 ByteString status_text）[文档 0.10.3]；' +
+      '更宽的 pattern（如 greet、*/greet）会被接受；当该 mock 同样不可读时 add 返回 ipc_warning：' +
+      '命中 Tauri IPC 调用时 Tauri 读不出 mock，服务端回 Tauri 错误并记录 mock_unreadable，' +
+      '真实命令不执行 [文档 0.10.3] + [源码 0.10.2 js_bridge.rs:1886-1889]；' +
+      '正则 pattern 的重复捕获组（如 (a+)+）在 add 时被拒（会挂起页面，JavaScript 无正则超时）' +
+      '[文档 0.10.3] + [源码 0.10.3 js_bridge.rs:3552]，0.10.2 及以前没有此校验' +
+      '（本机可核 0.8.8 / 0.10.2 均无）；' +
+      'ipc_warning/mock_unreadable 是 0.10.x 引入的细化，0.8.8 服务端没有这两项' +
+      '（本机可核 0.8.8 无、0.10.2 有）。' +
       'add 加规则，list 列规则+触发日志，clear 按 id 删，clear_all 全删，matches 返回拦截日志。' +
       '[源码] 0.10.2 的 RouteBehavior 注释仍写 "fetch only; XHR falls back to delay"。 [桥]',
     parameters: {

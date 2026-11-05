@@ -462,6 +462,10 @@ describe('dsh-victauri 工具面契约', () => {
     );
     expect(routeDesc).toContain('不计入 command_timings');
     expect(routeDesc).toContain('postMessage IPC 不受影响');
+    // 冒烟锚点：批十 2/2 新增的四段口径在描述层可见（细粒度断言见下方专用用例），
+    // 避免这段既有断言块对新增内容零覆盖、全部依赖单个新用例独守。
+    expect(routeDesc).toContain('会拒绝两类规则');
+    expect(routeDesc).toContain('真实命令不执行');
 
     // recording：replay 语义改为 0.10.x 口径（只重放无参成功调用、不与基线 diff）
     const recordingDesc = specOf('recording').description;
@@ -643,5 +647,69 @@ describe('dsh-victauri 工具面契约', () => {
     // 工具表的 query_db 口径与 catalog 一致（上游正式 serde alias）
     const toolsDoc = readDoc('docs/TOOLS.md');
     expect(toolsDoc).toContain('上游正式 serde alias');
+  });
+
+  it('批十 2/2 route 0.10.3 细化口径:add 拒绝规则 / ipc_warning / mock_unreadable / regex 重复组', () => {
+    const specOf = (name: string) =>
+      COMPOUND_TOOL_SPECS.find((spec) => spec.name === name)!;
+    const routeDesc = specOf('route').description;
+    // 描述是单行拼接，位置约束按「分句」绑定：取含该关键词的那一句再断言来源标注，
+    // 避免 [^\n]* 退化成「全文任意位置出现该标注」的弱断言。
+    // 分句约定：route 描述的语义分句以中文分号「；」分隔（若日后改用「。」或换行分句，
+    // 需同步改此分隔符，否则 helper 会退化为「含关键词的整段」，断言强度下降）。
+    const SENTENCE_SEPARATOR = '；';
+    const sentenceWith = (keyword: string): string => {
+      const hit = routeDesc
+        .split(SENTENCE_SEPARATOR)
+        .find((s) => s.includes(keyword));
+      expect(hit, `route 描述缺少含「${keyword}」的分句`).toBeDefined();
+      return hit!;
+    };
+
+    // ① add 的两条拒绝规则（[文档 0.10.3]）
+    expect(routeDesc).toContain('会拒绝两类规则');
+    expect(routeDesc).toContain('不可读');
+    expect(routeDesc).toContain('Response 构造器');
+    expect(sentenceWith('会拒绝两类规则')).toContain('[文档 0.10.3]');
+    // 拒绝类判定只针对 fulfill 规则（上游仅在 action==='fulfill' 时计算 mock 可读性）
+    expect(sentenceWith('会拒绝两类规则')).toContain('fulfill');
+    // 拒绝判据串必须锁住（上游 mock 可读性判定的具体条件，删掉即语义漂移）
+    expect(sentenceWith('会拒绝两类规则')).toContain('命中 IPC host');
+    expect(sentenceWith('会拒绝两类规则')).toContain(
+      '无 body、非 JSON body、204+application/json',
+    );
+    expect(sentenceWith('会拒绝两类规则')).toContain(
+      '非 ByteString status_text',
+    );
+
+    // ② 宽 pattern 的 ipc_warning 与 mock_unreadable（[文档 0.10.3] + [源码 0.10.2]）
+    expect(routeDesc).toContain('ipc_warning');
+    expect(routeDesc).toContain('mock_unreadable');
+    expect(sentenceWith('ipc_warning')).toContain('[文档 0.10.3]');
+    expect(sentenceWith('mock_unreadable')).toContain('[源码 0.10.2');
+    // ipc_warning 的前置条件：只有该 mock 同样不可读时才返回
+    expect(routeDesc).toContain('当该 mock 同样不可读时 add 返回 ipc_warning');
+    // 宽 pattern 的行为要点：被接受、命中时回 Tauri 错误、真实命令不执行
+    expect(sentenceWith('更宽的 pattern')).toContain('会被接受');
+    expect(sentenceWith('ipc_warning')).toContain('Tauri 错误');
+    expect(routeDesc).toContain('真实命令不执行');
+    // 行号事实锚点（上游 crate 行号漂移可被测出，措辞可调、行号不可漂）
+    expect(routeDesc).toContain('js_bridge.rs:1886-1889');
+
+    // ③ regex 重复捕获组在 add 时被拒（0.10.3 引入，0.10.2 及以前无此校验）
+    expect(sentenceWith('重复捕获组')).toContain('在 add 时被拒');
+    expect(sentenceWith('重复捕获组')).toContain('[文档 0.10.3]');
+    expect(sentenceWith('重复捕获组')).toContain('[源码 0.10.3');
+    expect(routeDesc).toContain('0.10.2 及以前没有此校验');
+    expect(routeDesc).toContain('本机可核 0.8.8 / 0.10.2 均无');
+    expect(routeDesc).toContain('js_bridge.rs:3552');
+
+    // ④ ipc_warning/mock_unreadable 是 0.10.x 引入（0.8.8 无）
+    expect(sentenceWith('0.10.x 引入')).toContain('0.8.8');
+    expect(routeDesc).toContain('0.8.8 服务端没有这两项');
+    expect(routeDesc).toContain('本机可核 0.8.8 无、0.10.2 有');
+
+    // 来源标注必须区分三类来源，不得把单源证据冒充成另一类
+    expect(routeDesc).not.toMatch(/\[CHANGELOG 0\.10\.3\]/);
   });
 });
