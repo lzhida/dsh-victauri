@@ -25,7 +25,14 @@
  */
 import type { ParameterPropertySpec } from '@deepseek-ai/dsh-tools';
 
-import { BOOL, ENUM, INT, STR, WEBVIEW } from '../standalone/catalog.ts';
+import {
+  ARRAY_RESULT_NOTE,
+  BOOL,
+  ENUM,
+  INT,
+  STR,
+  WEBVIEW,
+} from '../standalone/catalog.ts';
 import type { RestToolSpec } from '../standalone/catalog.ts';
 import { JSON_VALUE } from '../standalone/json-value.ts';
 /** 开放对象参数辅助（headers/args/state 等 JSON 对象透传）。 */
@@ -96,7 +103,10 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       '注意：动画仅在运行/挂起时可见——先触发动画再调用。' +
       'action 值域基线 0.10.3（list/scrub/sample）：[源码] 0.8.8 另有 clear 动作，0.10.x 起废弃' +
       '（清空改经 sample 的 clear=true 参数，见 0.10.3 tools-reference），本插件不再暴露 ' +
-      'clear 动作；连 0.8.8 服务端时清空录制请改用 sample + clear:true。 [桥+文档 0.10.3]',
+      'clear 动作；连 0.8.8 服务端时清空录制请改用 sample + clear:true。' +
+      'list 动作返回顶层数组;' +
+      ARRAY_RESULT_NOTE +
+      ' [桥+文档 0.10.3]',
     parameters: {
       action: ACTION('animation', ['list', 'scrub', 'sample']),
       capture: BOOL('(scrub) 为 true 时每进度点原生截图并返回 filmstrip PNG'),
@@ -189,7 +199,10 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       '检查动作：get_styles 取元素计算 CSS（properties 可指定属性清单）；' +
       'get_bounding_boxes 批量取布局矩形；highlight 加调试高亮 overlay；' +
       'clear_highlights 移除全部高亮；audit_accessibility 跑无障碍审计；' +
-      'get_performance 取 timing/heap/DOM 指标。ref_id 来自 dom_snapshot。 [桥]',
+      'get_performance 取 timing/heap/DOM 指标。ref_id 来自 dom_snapshot。' +
+      'get_bounding_boxes 动作返回顶层数组;' +
+      ARRAY_RESULT_NOTE +
+      ' [桥]',
     parameters: {
       action: ACTION('inspect', [
         'get_styles',
@@ -303,7 +316,10 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       '0.10.2 起已含 level/target/since_seq/fields（仅缺 bodies）；' +
       '0.8.8 另无 backend/backend_digest/stdout 三个动作。' +
       '旧服务端兼容性：新增动作在 0.8.8 会因未知枚举值报错；' +
-      '新增参数被 serde 静默忽略、不报错（两版服务端均未开 deny_unknown_fields）。 [桥]',
+      '新增参数被 serde 静默忽略、不报错（两版服务端均未开 deny_unknown_fields）。' +
+      'console/network/ipc/navigation/dialogs/events 六个动作返回顶层数组;' +
+      ARRAY_RESULT_NOTE +
+      ' [桥]',
     parameters: {
       action: ACTION('logs', [
         'console',
@@ -356,7 +372,10 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       '导航与对话框：go_to 导航到 URL；go_back 浏览器后退；get_history 导航历史日志；' +
       'set_dialog_response 自动应答 alert/confirm/prompt（dialog_action=accept|dismiss，' +
       'prompt 可带 text）；get_dialog_log 取已捕获对话框事件。go_to/set_dialog_response ' +
-      '受隐私控制约束。 [桥]',
+      '受隐私控制约束。' +
+      'get_history/get_dialog_log 两个动作返回顶层数组;' +
+      ARRAY_RESULT_NOTE +
+      ' [桥]',
     parameters: {
       action: ACTION('navigate', [
         'go_to',
@@ -391,7 +410,11 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       '被隐私名单拦截的记为 blocked；passed 只表示重放成功，不与原响应 diff（只报 JSON 类型）；' +
       '每条调用在录制它的那个窗口重放，窗口不存在即 skipped，绝不回退 main；' +
       'webview_label 只过滤不重定向；重放真实产生副作用。' +
-      'flush 立即排干挂起事件（不等 1 秒轮询）。 [文档 0.10.3]',
+      'flush 立即排干挂起事件（不等 1 秒轮询）。' +
+      'list_checkpoints/get_events/get_replay 三个动作返回顶层数组' +
+      '(events_between 无丢弃事件时也是顶层数组,有丢弃时返回对象);' +
+      ARRAY_RESULT_NOTE +
+      ' [文档 0.10.3]',
     parameters: {
       action: ACTION('recording', [
         'start',
@@ -451,7 +474,10 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       'ipc_warning/mock_unreadable 是 0.10.x 引入的细化，0.8.8 服务端没有这两项' +
       '（本机可核 0.8.8 无、0.10.2 有）。' +
       'add 加规则，list 列规则+触发日志，clear 按 id 删，clear_all 全删，matches 返回拦截日志。' +
-      '[源码] 0.10.2 的 RouteBehavior 注释仍写 "fetch only; XHR falls back to delay"。 [桥]',
+      '[源码] 0.10.2 的 RouteBehavior 注释仍写 "fetch only; XHR falls back to delay"。' +
+      'list/matches 两个动作返回顶层数组;' +
+      ARRAY_RESULT_NOTE +
+      ' [桥]',
     parameters: {
       action: ACTION('route', ['add', 'list', 'clear', 'clear_all', 'matches']),
       behavior: ENUM('(add) 规则行为', ['block', 'fulfill', 'delay']),
@@ -485,7 +511,10 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       'set 写（value 为任意 JSON 值，服务端按 JSON 序列化后写入）；delete 删键；' +
       'get_cookies 取页面的 Cookie——[源码] 仅非 httpOnly（两版服务端均经 document.cookie 读取），' +
       'httpOnly Cookie 读不到（0.10.3 文档同）。' +
-      'set/delete 受隐私控制约束。 [桥]',
+      'set/delete 受隐私控制约束。' +
+      'get_cookies 动作返回顶层数组;' +
+      ARRAY_RESULT_NOTE +
+      ' [桥]',
     parameters: {
       action: ACTION('storage', ['get', 'set', 'delete', 'get_cookies']),
       key: STR('(get/set/delete) 存储键'),
@@ -532,7 +561,10 @@ export const COMPOUND_TOOL_SPECS: readonly RestToolSpec[] = [
       'label 选目标窗口，省略 = 主窗口。' +
       '[文档 0.10.3] resize/move_to 返回读回值（物理像素/位置）并附 requested，' +
       'settled:false 表示约 500ms 内窗口未变化（Linux/macOS 异步生效，窗口管理器可能忽略）。' +
-      '[源码] introspectability 在 0.8.8 与 0.10.2 的 WindowAction 中均已存在。 [桥]',
+      '[源码] introspectability 在 0.8.8 与 0.10.2 的 WindowAction 中均已存在。' +
+      'list/get_state 两个动作返回顶层数组;' +
+      ARRAY_RESULT_NOTE +
+      ' [桥]',
     parameters: {
       action: ACTION('window', [
         'get_state',

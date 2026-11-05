@@ -20,6 +20,7 @@ import {
 } from './compound/catalog.ts';
 import { createCompoundTools } from './compound/bridge.ts';
 import {
+  ARRAY_RESULT_NOTE,
   REST_TOOL_SPECS,
   STANDALONE_TOOL_COUNT,
 } from './standalone/catalog.ts';
@@ -798,5 +799,73 @@ describe('dsh-victauri 工具面契约', () => {
     expect(rowOf('backlog-B')).not.toContain(
       'M-2/M-3/M-4/M-6 的描述层已由批九 3/3',
     );
+  });
+
+  it('批十一 3/3 数组型工具描述：只给确实返回顶层数组的工具补 {items:[...]} 说明，措辞统一', () => {
+    // 统一措辞的硬编码期望：措辞改动必须同步改本断言，避免"改了文案却不断言"
+    const EXPECTED_NOTE =
+      '数组结果会被本插件统一包装为 {"items":[...]}（dsh execute 契约要求顶层为 object）；' +
+      '上游同名工具/动作返回的是裸数组。' +
+      '裸数组直透提案见看板卡 t-mw1ri0ep-8vw7ql（未授权执行，需用户批准后才能认领）。';
+    expect(ARRAY_RESULT_NOTE).toBe(EXPECTED_NOTE);
+
+    // 确实返回顶层数组的工具（0.10.3 活体实测 + 上游源码取证，证据见 risk 文档）
+    const ARRAY_TOOLS = [
+      'find_elements',
+      'get_registry',
+      'resolve_command',
+      'logs',
+      'recording',
+      'route',
+      'window',
+      'navigate',
+      'inspect',
+      'animation',
+      'storage',
+    ];
+    // 每个工具都要写明「整体返回」还是「哪些子动作返回」顶层数组
+    const SCOPE: Record<string, string> = {
+      find_elements: '本工具返回顶层数组',
+      get_registry: '本工具返回顶层数组',
+      resolve_command: '本工具返回顶层数组',
+      logs: 'console/network/ipc/navigation/dialogs/events 六个动作返回顶层数组',
+      recording: 'list_checkpoints/get_events/get_replay 三个动作返回顶层数组',
+      route: 'list/matches 两个动作返回顶层数组',
+      window: 'list/get_state 两个动作返回顶层数组',
+      navigate: 'get_history/get_dialog_log 两个动作返回顶层数组',
+      inspect: 'get_bounding_boxes 动作返回顶层数组',
+      animation: 'list 动作返回顶层数组',
+      storage: 'get_cookies 动作返回顶层数组',
+    };
+
+    const descOf = (name: string): string => {
+      const spec = [...REST_TOOL_SPECS, ...COMPOUND_TOOL_SPECS].find(
+        (item) => item.name === name,
+      );
+      expect(spec, `找不到工具 ${name}`).toBeDefined();
+      return spec!.description;
+    };
+
+    // ① 每个数组型工具都带统一说明，并写明数组范围
+    for (const name of ARRAY_TOOLS) {
+      const description = descOf(name);
+      expect(description, `${name} 缺统一数组说明`).toContain(EXPECTED_NOTE);
+      expect(description, `${name} 缺数组范围声明`).toContain(SCOPE[name]!);
+      expect(
+        description.indexOf(SCOPE[name]!),
+        `${name} 的数组范围声明应排在统一说明之前`,
+      ).toBeLessThan(description.indexOf(EXPECTED_NOTE));
+    }
+
+    // ② 覆盖完整且不误伤：带统一说明的工具集合恰好等于数组型工具清单
+    const carriers = [...REST_TOOL_SPECS, ...COMPOUND_TOOL_SPECS]
+      .filter((spec) => spec.description.includes(EXPECTED_NOTE))
+      .map((spec) => spec.name)
+      .sort();
+    expect(carriers).toEqual([...ARRAY_TOOLS].sort());
+
+    // ③ 旧措辞必须清退，避免同一语义存在两套说法
+    expect(descOf('find_elements')).not.toContain('本插件包装为 {items:[...]}');
+    expect(descOf('find_elements')).not.toContain('返回顶层数组,本插件包装为');
   });
 });

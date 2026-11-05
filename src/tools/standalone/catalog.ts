@@ -41,6 +41,18 @@ export interface RestToolSpec {
   readonly requestBudgetMs?: number;
 }
 
+/**
+ * 数组型结果的统一说明（批十一 3/3）。
+ *
+ * 上游 victauri 的部分工具/子动作直接返回**顶层数组**（裸数组）；本插件的 REST 桥
+ * 按 dsh execute 契约要求顶层是 object，故把数组结果统一包装为 `{"items":[...]}`。
+ * 裸数组直透提案见看板卡 `t-mw1ri0ep-8vw7ql`——该卡为 backlog 提案卡，**未授权执行**。
+ */
+export const ARRAY_RESULT_NOTE =
+  '数组结果会被本插件统一包装为 {"items":[...]}（dsh execute 契约要求顶层为 object）；' +
+  '上游同名工具/动作返回的是裸数组。' +
+  '裸数组直透提案见看板卡 t-mw1ri0ep-8vw7ql（未授权执行，需用户批准后才能认领）。';
+
 /** 标量参数辅助（standalone/compound catalog 共用）。 */
 export const STR = (description: string, required = false) => ({
   type: 'string' as const,
@@ -174,7 +186,8 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     title: '查找元素',
     description:
       '按文本/角色/test_id/CSS 选择器/可访问名搜索元素,返回轻量匹配与 ref 句柄。' +
-      '全部条件可选(可组合);返回顶层数组,本插件包装为 {items:[...]}。' +
+      '全部条件可选(可组合);本工具返回顶层数组;' +
+      ARRAY_RESULT_NOTE +
       '0.10.3 起服务端计算可访问名并给出诚实的 visible/enabled,文本匹配返回最深的匹配节点;' +
       'exact 与 text_exact 的取舍以服务端实现为准(0.10.3 文档参数表未收录 text_exact)。' +
       'schema 来源：[文档 0.10.3 参数表] + [CHANGELOG 0.10.3 attribute/attribute_value/text_exact/include_hidden] + [实测 0.8.8 空参成功(返回数组)]。',
@@ -247,7 +260,9 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     title: '检索命令注册表',
     description:
       '按名称/描述子串过滤列出全部注册的 Tauri 命令及参数 schema(#inspectable 宏注册才有 schema)。' +
-      'query 缺省返回全部。schema 来源：[文档] + [实测 0.8.8 空参成功]。',
+      'query 缺省返回全部。本工具返回顶层数组;' +
+      ARRAY_RESULT_NOTE +
+      'schema 来源：[文档] + [实测 0.8.8 空参成功]。',
     parameters: {
       query: STR('按命令名或描述过滤的子串 [文档]'),
     },
@@ -348,7 +363,9 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
     title: '自然语言解析命令',
     description:
       '按自然语言描述解析匹配的 Tauri 命令,按相关度打分排序(命令名/描述/意图/类别/示例)。' +
-      '必填 query;limit 默认 5。schema 来源：[实测 0.8.8 报 missing field `query`] + [文档 limit]。',
+      '必填 query;limit 默认 5。本工具返回顶层数组;' +
+      ARRAY_RESULT_NOTE +
+      'schema 来源：[实测 0.8.8 报 missing field `query`] + [文档 limit]。',
     parameters: {
       query: STR(
         '描述想做什么的自然语言,如 "save the user settings" [实测必填]',
