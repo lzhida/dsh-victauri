@@ -9,6 +9,7 @@ import { applyImageChannel, createRestBridgeTool } from './bridge.ts';
 import {
   IMAGE_DIR_NAME,
   IMAGE_SAVE_MAX,
+  IMAGE_SAVE_MAX_BYTES,
   extForMime,
   isImageValue,
   normalizeImageResult,
@@ -85,6 +86,21 @@ describe('image.ts 通用图像值识别', () => {
     const framed = saveImage(PNG_BASE64, 'image/png', 'trace', 3);
     expect(framed.path).toMatch(/trace-\d+-003\.png$/);
     cleanup(saved.path, framed.path);
+  });
+
+  it('saveImage 字节上限(L-10)：超过 IMAGE_SAVE_MAX_BYTES 抛错不落盘，恰好等于上限可落盘', () => {
+    // 超 1 字节:抛错且消息含实际字节数与上限(不写任何文件)
+    const big = Buffer.alloc(IMAGE_SAVE_MAX_BYTES + 1, 0x61).toString('base64');
+    expect(() => saveImage(big, 'image/png', 'too-big')).toThrowError(
+      new RegExp(
+        `image too large to save: \\d+ bytes \\(limit ${IMAGE_SAVE_MAX_BYTES}\\)`,
+      ),
+    );
+    // 边界:恰好等于上限,正常落盘
+    const exact = Buffer.alloc(IMAGE_SAVE_MAX_BYTES, 0x61).toString('base64');
+    const saved = saveImage(exact, 'image/png', 'cap-ok');
+    expect(saved.bytes).toBe(IMAGE_SAVE_MAX_BYTES);
+    cleanup(saved.path);
   });
 });
 
@@ -252,6 +268,19 @@ describe('applyImageChannel（bridge 集成）', () => {
     const single = applyImageChannel(imageBlock(PNG_BASE64), 'x', boom)!;
     expect(single['image_save_error']).toBe('disk full');
     expect(single['data']).toBe(PNG_BASE64);
+  });
+
+  it('字节上限经桥(L-10)：超限图像走真实 saveImage 抛错 → image_save_error 回退', () => {
+    const big = Buffer.alloc(IMAGE_SAVE_MAX_BYTES + 1, 0x61).toString('base64');
+    const out = applyImageChannel(
+      { data: big, mimeType: 'image/png' },
+      'big-tool',
+    );
+    expect(out).not.toBeNull();
+    const message = String(out!['image_save_error']);
+    expect(message).toContain(`limit ${IMAGE_SAVE_MAX_BYTES}`);
+    // 巨型 base64 仍在原文里(回退不吞错),由 renderJson 截断兜底
+    expect(out!['data']).toBe(big);
   });
 
   it('frames=0 对象经桥原样返回（不触发图像通道）', async () => {

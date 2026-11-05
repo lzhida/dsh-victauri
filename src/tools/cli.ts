@@ -13,8 +13,12 @@ import { buildActionHint, buildCliToolDescription } from '../cli-hints.ts';
 import { parseDoctorReportFromStreams } from '../cli-doctor.ts';
 import { getCliStatus } from './cli-status.ts';
 
-/** 工具层执行预算:victauri test/record 可能耗时,给满 5 分钟。 */
-const TOOL_TIMEOUT_MS = 300_000;
+/**
+ * 宿主侧工具预算（也是 timeout_ms 的实际上限，M-10a）：
+ * 超过它的 timeout_ms 会被夹到本值——避免「宿主已放弃工具调用、
+ * 子进程却按更大的超时定时器继续跑」的无界窗口。
+ */
+export const CLI_MAX_TIMEOUT_MS = 300_000;
 
 /** 输出被截断时由 runVictauriCli 追加的标记。 */
 const TRUNCATION_MARKER = '[truncated]';
@@ -98,7 +102,7 @@ export function createVictauriCliTool(options: VictauriCliToolOptions = {}) {
       },
       timeout_ms: {
         type: 'integer',
-        description: '子进程超时毫秒(默认 120000)',
+        description: `子进程超时毫秒(默认 ${CLI_DEFAULT_TIMEOUT_MS};上限 ${CLI_MAX_TIMEOUT_MS}=宿主工具预算,超过会被夹到上限,避免宿主放弃后子进程仍在跑)`,
       },
       cwd: {
         type: 'string',
@@ -274,7 +278,7 @@ export function createVictauriCliTool(options: VictauriCliToolOptions = {}) {
         return blocks;
       },
     },
-    timeoutMs: TOOL_TIMEOUT_MS,
+    timeoutMs: CLI_MAX_TIMEOUT_MS,
     execute: async (args) => {
       const { action, args: extraArgs, timeout_ms, cwd } = args;
       if (!isCliAction(action)) {
@@ -282,10 +286,18 @@ export function createVictauriCliTool(options: VictauriCliToolOptions = {}) {
         throw new Error(`unknown victauri subcommand: ${action}`);
       }
       const version = await resolveCliVersion(options);
+      // M-10a:timeout_ms 夹到宿主预算——宿主在 CLI_MAX_TIMEOUT_MS 放弃本工具调用,
+      // 子进程超时不得大于它,否则出现「宿主已放弃、子进程仍在跑」的孤儿窗口。
+      const requestedTimeoutMs = timeout_ms ?? CLI_DEFAULT_TIMEOUT_MS;
+      // 参数 schema 无 minimum 关键字:0/负数在这里兜底——setTimeout(≤0) 会立即
+      // 触发,子进程被秒杀;下限取 1ms,上限取 CLI_MAX_TIMEOUT_MS。
       const result = await run({
         args: [action, ...(extraArgs ?? [])],
         cliPath: options.cliPath,
-        timeoutMs: timeout_ms ?? CLI_DEFAULT_TIMEOUT_MS,
+        timeoutMs: Math.min(
+          Math.max(requestedTimeoutMs, 1),
+          CLI_MAX_TIMEOUT_MS,
+        ),
         ...(cwd !== undefined ? { cwd } : {}),
       });
       const hint = buildActionHint(action, version);

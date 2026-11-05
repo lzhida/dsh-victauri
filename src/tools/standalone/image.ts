@@ -25,6 +25,13 @@ export const IMAGE_DIR_NAME = 'dsh-victauri';
 /** 单次调用最多落盘的图像文件数（trace 环形缓冲上限 600、filmstrip 上限 120）。 */
 export const IMAGE_SAVE_MAX = 120;
 
+/**
+ * 单张图像落盘字节上限（20MiB，L-10）。超过它 saveImage 直接 throw
+ * （不写盘），由 applyImageChannel 的既有回退兜成 image_save_error——
+ * 避免 None 界的巨型 base64 解码后把临时目录当垃圾桶。
+ */
+export const IMAGE_SAVE_MAX_BYTES = 20 * 1024 * 1024;
+
 /** 图像值形状：{data(base64), mimeType}，type 字段可有可无。 */
 export interface ImageValue {
   data: string;
@@ -77,7 +84,8 @@ export function extForMime(mimeType: string): string {
 /**
  * 落盘单张图像：`%TEMP%\dsh-victauri\<prefix>-<ts>[-NNN].<ext>`。
  * index 省略时文件名与 screenshot 历史命名完全一致（`screenshot-<ts>.png`）。
- * @throws 写盘失败时向上抛（bridge 层捕获后回退原文返回）。
+ * @throws 单图解码后超过 IMAGE_SAVE_MAX_BYTES、或写盘失败时向上抛
+ *   （bridge 层捕获后回退原文返回 + image_save_error）。
  */
 export function saveImage(
   data: string,
@@ -92,6 +100,11 @@ export function saveImage(
     index === undefined ? '' : `-${String(index).padStart(3, '0')}`;
   const file = join(dir, `${prefix}-${stamp}${suffix}.${extForMime(mimeType)}`);
   const buf = Buffer.from(data, 'base64');
+  if (buf.byteLength > IMAGE_SAVE_MAX_BYTES) {
+    throw new Error(
+      `image too large to save: ${buf.byteLength} bytes (limit ${IMAGE_SAVE_MAX_BYTES})`,
+    );
+  }
   writeFileSync(file, buf);
   return { path: file, mime_type: mimeType, bytes: buf.byteLength };
 }

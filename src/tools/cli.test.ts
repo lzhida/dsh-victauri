@@ -8,7 +8,9 @@ import {
   validateJsonSchemaValue,
 } from '@deepseek-ai/dsh-tools';
 
+import { CLI_DEFAULT_TIMEOUT_MS } from '../cli.ts';
 import {
+  CLI_MAX_TIMEOUT_MS,
   createVictauriCliTool,
   PREVIEW_MAX_CHARS,
   renderPreview,
@@ -69,6 +71,58 @@ function fakeRun(result: {
 }) {
   return async () => result;
 }
+
+describe('dsh-victauri victauri_cli tool: timeout_ms 上限(M-10a)', () => {
+  /** 记录 run 收到的完整选项(含 timeoutMs),替身不真正 spawn。 */
+  function capturingRun() {
+    const seen: { timeoutMs?: number } = {};
+    const run = async (opts: { timeoutMs?: number }) => {
+      Object.assign(seen, opts);
+      return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+    };
+    return { seen, run };
+  }
+
+  it('timeout_ms 超过宿主预算被夹到 CLI_MAX_TIMEOUT_MS,默认/小值/非正数各有归宿', async () => {
+    const { seen, run } = capturingRun();
+    // version 显式注入:跳过 cli-status 探测(不真实 spawn node --version,
+    // 也不污染 cli-status 的 60s 模块级缓存)。
+    const probe = createVictauriCliTool({
+      cliPath: process.execPath,
+      version: '0.8.8',
+      run,
+    });
+    await probe.execute({ action: 'check' }, {} as never);
+    expect(seen.timeoutMs).toBe(CLI_DEFAULT_TIMEOUT_MS);
+    await probe.execute(
+      { action: 'check', timeout_ms: 3_600_000 },
+      {} as never,
+    );
+    expect(seen.timeoutMs).toBe(CLI_MAX_TIMEOUT_MS);
+    await probe.execute({ action: 'check', timeout_ms: 1_500 }, {} as never);
+    expect(seen.timeoutMs).toBe(1_500);
+    // 非正数兜底(schema 无 minimum):setTimeout(≤0) 立即触发会秒杀子进程。
+    await probe.execute({ action: 'check', timeout_ms: 0 }, {} as never);
+    expect(seen.timeoutMs).toBe(1);
+    await probe.execute({ action: 'check', timeout_ms: -1 }, {} as never);
+    expect(seen.timeoutMs).toBe(1);
+  });
+
+  it('timeout_ms 描述与上限/默认常量同源,工具声明复用宿主预算(不变量护栏)', () => {
+    // 核心不变量:子进程上限 = 宿主工具预算。宿主预算下调而常量未同步时,
+    // 孤儿窗口回归——这条断言就是防它的。
+    expect(victauriCliTool.timeoutMs).toBe(CLI_MAX_TIMEOUT_MS);
+    // defineTool 把 parameters 包装成 JSON Schema:{type:'object',properties:{...}}
+    const schema = victauriCliTool.parameters as {
+      properties?: {
+        timeout_ms?: { description?: string };
+      };
+    };
+    const desc = schema.properties?.timeout_ms?.description ?? '';
+    expect(desc).toContain(`默认 ${CLI_DEFAULT_TIMEOUT_MS}`);
+    expect(desc).toContain(`上限 ${CLI_MAX_TIMEOUT_MS}`);
+  });
+});
 
 describe('dsh-victauri victauri_cli tool', () => {
   it('execute 拼装 [action, ...args] 并返回结构化四元组', async () => {
