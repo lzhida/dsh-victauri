@@ -712,4 +712,91 @@ describe('dsh-victauri 工具面契约', () => {
     // 来源标注必须区分三类来源，不得把单源证据冒充成另一类
     expect(routeDesc).not.toMatch(/\[CHANGELOG 0\.10\.3\]/);
   });
+
+  it('批十一 2/3 差距清单状态回填：P3-5/M-2/M-3/M-4/L-11 的状态、归属与建卡映射表同现实一致', () => {
+    const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+    const gapList = readFileSync(
+      join(repoRoot, 'docs/audit/2026-11-05/gap-list.md'),
+      'utf8',
+    );
+
+    // 取某个条目（含其后缩进续行）直到下一个同级条目或小节标题
+    const entryOf = (key: string): string => {
+      const lines = gapList.split('\n');
+      const start = lines.findIndex((line) => line.includes(key));
+      expect(start, `gap-list 缺少含「${key}」的条目`).toBeGreaterThanOrEqual(
+        0,
+      );
+      const out: string[] = [];
+      for (let i = start; i < lines.length; i += 1) {
+        const line = lines[i]!;
+        if (i > start && (/^-\s/.test(line) || /^#{2,3}\s/.test(line))) break;
+        out.push(line);
+      }
+      return out.join('\n');
+    };
+    // 换行不参与语义断言：折行不应让断言变弱或变脆
+    const flat = (text: string) => text.replace(/\s+/g, ' ');
+
+    // ① P3-5：状态已回填为已修 + 行号级证据 + 真实落地提交
+    const p35 = flat(entryOf('P3-5'));
+    expect(p35).toContain('✅');
+    expect(p35).toContain('【2026-11-05 已修，批十一 2/3】');
+    expect(p35).toContain('README.md:44');
+    expect(p35).toContain('docs/TOOLS.md:512');
+    expect(p35).toContain('be544f6');
+
+    // ② M-2：拆成「描述层已完成」与「实现层未授权」两段
+    const m2 = flat(entryOf('M-2'));
+    expect(m2).toContain('【2026-11-05 拆分，批十一 2/3】');
+    expect(m2).toContain('描述层说明（已完成');
+    expect(m2).toContain('实现层透传');
+    expect(m2).toContain('t-mw1ri0ep-8vw7ql');
+    expect(m2).toContain('未授权执行，需用户批准后才能认领');
+    expect(m2).toContain('docs/TOOLS.md:155-180');
+
+    // ③ M-3 / M-4 / L-11：归属写清且写明未授权
+    const m3 = flat(entryOf('M-3'));
+    expect(m3).toContain('t-mw2evd2u-0dukch');
+    expect(m3).toContain('未授权执行，需用户批准后才能认领');
+
+    const m4 = flat(entryOf('M-4'));
+    expect(m4).toContain('t-mw2evd2u-0dukch');
+    expect(m4).toContain('t-mw2eut5k-6k1elc');
+    expect(m4).toContain('未授权执行，需用户批准后才能认领');
+
+    const l11 = flat(entryOf('L-11'));
+    expect(l11).toContain('t-mw2evd2u-0dukch');
+    expect(l11).toContain('M-5');
+    expect(l11).toContain('未授权执行，需用户批准后才能认领');
+
+    // ④ 建卡映射表：批十一三行登记；未执行的批次不得预填「已执行」
+    const rowOf = (key: string): string =>
+      gapList
+        .split('\n')
+        .find((line) => line.startsWith('|') && line.includes(key)) ?? '';
+    expect(rowOf('批十一 1/3')).toContain('已执行 e5f11d7');
+    expect(rowOf('批十一 2/3')).toMatch(/执行中（本卡）|已执行 [0-9a-f]{7}/);
+    const row11c = rowOf('批十一 3/3');
+    expect(row11c).toContain('t-mw31b5gs-0czoj5');
+    expect(row11c).not.toContain('已执行');
+
+    // ⑤ 映射表不得把已由更早提交结案的差距记到后来的批次名下
+    // （P3-5 实由 be544f6/eb549f3 落地，不是批十一 1/3 的成果）
+    expect(rowOf('批十一 1/3')).toContain('route 0.10.3 行为边界');
+    expect(rowOf('批十一 1/3')).not.toMatch(/^\|\s*P3-5/);
+    // M-6 已在批十 1/2 整体结案，不得再列为 backlog-B 的在办项
+    expect(rowOf('backlog-B')).toContain(
+      'M-6 已在批十 1/2 整体结案故不在本卡范围',
+    );
+    // T-6 已在批十 2/2 结案，同样不得留在 backlog-B 的在办项里
+    expect(rowOf('backlog-B')).toContain('T-6 已在批十 2/2 结案');
+    // backlog-B 行的在办项不得把描述层已结案的 M-2/M-3/M-4 混记为未做
+    expect(rowOf('backlog-B')).toContain(
+      'M-2/M-3/M-4 的描述层已由批十一 1/3 结案',
+    );
+    expect(rowOf('backlog-B')).not.toContain(
+      'M-2/M-3/M-4/M-6 的描述层已由批九 3/3',
+    );
+  });
 });
