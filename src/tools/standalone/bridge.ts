@@ -11,6 +11,11 @@
  *   覆盖 screenshot / trace frames / animation scrub filmstrip）在 renderJson
  *   截断之前统一落盘 %TEMP%\dsh-victauri\ 返回路径，落盘失败回退原文并保留错误；
  * - 数组结果包装为 {items: [...]}（dsh execute 契约要求顶层 object，find_elements 实测顶层数组）；
+ * - 未知参数键照常透传（上游静默忽略），结果顶层附加 ignored_args 排序提示（M-4，
+ *   known 集合 = schema 声明键 + 上游正式 serde 别名（window/window_label/label 等，
+ *   见 UPSTREAM_WINDOW_ALIAS_TOOLS / UPSTREAM_EXTRA_ALIASES）；插件自有别名键
+ *   （expression/sql）在归一时已从请求中移除，不会误报；图像通道与错误信封不附加；
+ *   上游结果自带同名键时插件提示改用 ignored_args_plugin 备用键，不覆盖上游值）；
  * - 错误面：VictauriError 系列不 throw，返回结构化 {error:{kind,message,hint,status?}} +
  *   自检指引（启动 app / victauri check）；status 仅 HTTP 分流错误携带（M-1）。
  */
@@ -98,6 +103,81 @@ function toRecord(value: JsonValue): Record<string, JsonValue> {
 }
 
 /**
+ * 上游 webview_label 字段带 serde alias window/window_label 的工具集合
+ * （0.10.3 源码逐一核对：victauri-plugin-0.10.3/src/mcp/*_params.rs）。
+ * 这些键会被上游真实消费，M-4 提示不得把它们报成 ignored：
+ * standalone：assert_semantic / check_ipc_integrity / detect_ghost_commands /
+ *   dom_snapshot / eval_js / find_elements / get_diagnostics / invoke_command /
+ *   verify_state / wait_for；
+ * compound：animation / css / explain / input / inspect / interact / introspect /
+ *   logs / navigate / recording / route / storage / trace。
+ * 不在集合内：app_state / fault（上游结构体没有 webview_label 字段，插件多声明的
+ *   webview_label 会被上游静默忽略——见 risk 文档备忘）；纯后端工具
+ *   （get_registry / list_app_dir / read_app_file / resolve_command / query_db /
+ *   get_memory_stats / get_plugin_info）没有 webview 目标参数。
+ */
+export const UPSTREAM_WINDOW_ALIAS_TOOLS: ReadonlySet<string> = new Set([
+  'assert_semantic',
+  'check_ipc_integrity',
+  'detect_ghost_commands',
+  'dom_snapshot',
+  'eval_js',
+  'find_elements',
+  'get_diagnostics',
+  'invoke_command',
+  'verify_state',
+  'wait_for',
+  'animation',
+  'css',
+  'explain',
+  'input',
+  'inspect',
+  'interact',
+  'introspect',
+  'logs',
+  'navigate',
+  'recording',
+  'route',
+  'storage',
+  'trace',
+]);
+
+/** window 组之外的上游正式 serde 别名（同样真实消费，不得误报）。 */
+export const UPSTREAM_EXTRA_ALIASES: Readonly<
+  Record<string, readonly string[]>
+> = {
+  // ScreenshotParams.window_label：alias window + webview_label（window_params.rs:6-9）
+  screenshot: ['window', 'webview_label'],
+  // WindowParams.label：alias webview_label/window/window_label（compound_params.rs:285-292）
+  window: ['webview_label', 'window', 'window_label'],
+  // RecordingParams.checkpoint_label：alias label（compound_params.rs:457-459）
+  recording: ['label'],
+};
+
+/**
+ * M-4(批十三 2/2):收集「schema 未声明且非上游正式别名」的参数键。
+ * 上游对未知键静默忽略(0.8.8/0.10.2/0.10.3 均无 deny_unknown_fields,backlog-A 订正),
+ * 本层不改变发送内容(透传语义不变),只把「传了但不生效」的键回报给模型;
+ * 返回按字母排序保证确定性。图像通道与错误信封路径不附加该提示。
+ * 注:插件自有别名键(expression/sql)在归一时已从请求中移除,天然不会出现在这里。
+ */
+function collectIgnoredArgs(
+  callArgs: Record<string, JsonValue>,
+  spec: RestToolSpec,
+): string[] {
+  // ParameterSchemaSpec 顶层即属性映射(implicit open object root)
+  const known = new Set(Object.keys(spec.parameters));
+  if (UPSTREAM_WINDOW_ALIAS_TOOLS.has(spec.name)) {
+    known.add('window');
+    known.add('window_label');
+  }
+  for (const key of UPSTREAM_EXTRA_ALIASES[spec.name] ?? []) known.add(key);
+  return Object.keys(callArgs)
+    .filter((key) => !known.has(key))
+    .sort();
+}
+
+/**
  * 由规格构建单个 REST 桥工具。dsh 工具名 = `victauri_` + victauri 工具名。
  * 输出 schema 为开放对象（透传透出，形状由 victauri 端决定）。
  */
@@ -150,10 +230,18 @@ export function createRestBridgeTool(
           spec.requestBudgetMs,
         );
         const result = await client.callTool(spec.name, callArgs, budget);
+        // M-4(批十三 2/2):未知键透传不变,仅在结果顶层附加 ignored_args 提示
+        const ignored = collectIgnoredArgs(callArgs, spec);
         // 图像通道:{data,mimeType} 形态统一落盘返回路径;无图像走原通道
         const imaged = applyImageChannel(result, spec.name);
         if (imaged !== null) return imaged;
-        return toRecord(result);
+        const record = toRecord(result);
+        if (ignored.length === 0) return record;
+        // 上游同名键防御:极少数上游结果自带 ignored_args 键时不覆盖上游值,
+        // 插件提示改用 ignored_args_plugin 备用键(两键并存,V2 低-5)
+        const hintKey =
+          'ignored_args' in record ? 'ignored_args_plugin' : 'ignored_args';
+        return { ...record, [hintKey]: ignored };
       } catch (err) {
         return toErrorValue(err);
       }

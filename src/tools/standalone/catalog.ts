@@ -170,7 +170,8 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
       '参数名版本差异:本插件参数为 code [实测 0.8.8 报 missing field `code`];' +
       '上游 0.10.3 文档与 0.10.2 源码(webview_params.rs)均只接受 code,无 expression 别名;' +
       'expression 是本插件自有的兼容别名,自动归一为 code(见 src/tools/standalone/bridge.ts ARG_ALIASES)。' +
-      '异步表达式自动包 await。',
+      '异步表达式自动包 await。本通道固定 45s 请求预算(经 client.callTool 第三参覆盖' +
+      '全局 requestTimeoutMs 配置,不随其放大;app 端 VICTAURI_EVAL_TIMEOUT 调到 >45s 时本通道会先放弃)。',
     parameters: {
       code: STR(
         '要执行的 JS 代码;必填:code 或 expression 至少其一 [实测 0.8.8 接受 code]',
@@ -180,6 +181,16 @@ export const REST_TOOL_SPECS: readonly RestToolSpec[] = [
       ),
       webview_label: WEBVIEW,
     },
+    // M-5(批十三 2/2):上游 eval_js 无 per-call 超时参数(0.10.3 webview_params.rs:7-13
+    // 仅 code/webview_label;SemanticAssertParams 同样无)。超时是 app 级配置:
+    // lib.rs:549 eval_timeout() 默认 30s、env VICTAURI_EVAL_TIMEOUT 可覆盖、
+    // builder 校验 1s<t≤300s(lib.rs:1007-1013,MAX_EVAL_TIMEOUT_SECS=300)。
+    // 本通道 30s 默认预算遇 app 端调大配置会先放弃(服务端仍在跑,见 gap-list M-8),
+    // 故声明 45s:给默认档留余量,不追 300s 上限(declare 上限 TOOL_BUDGET_MAX_MS=120s 也兜不住)。
+    // 预算覆盖语义(V2 低-6):声明值经 client.callTool 第三参 timeoutMsOverride 生效
+    // (src/client.ts: timeoutMsOverride ?? this.timeoutMs)——eval_js 固定 45s,
+    // 全局 requestTimeoutMs 调大不会放大它;同理调小也不缩它。
+    requestBudgetMs: 45_000,
   },
   {
     name: 'find_elements',

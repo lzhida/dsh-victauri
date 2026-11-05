@@ -61,7 +61,7 @@ describe('compound 桥运行时透传(共用 standalone 工厂)', () => {
     expect(result).not.toHaveProperty('error');
   });
 
-  it('route 未知顶层参数放行(透传语义,由服务端决定取舍)', async () => {
+  it('route 未知顶层参数放行且以 ignored_args 可观测(M-4,透传语义不变)', async () => {
     const { client, state } = mockClient(async () => ({ added: true }));
     const tool = createRestBridgeTool(specOf('route'), {
       getClient: async () => client,
@@ -76,6 +76,35 @@ describe('compound 桥运行时透传(共用 standalone 工厂)', () => {
       {} as never,
     )) as Record<string, unknown>;
     expect(state.calls).toBe(1);
-    expect(result).toEqual({ added: true });
+    // 未知键照常透传(上游静默忽略,行为不变),结果顶层只附加提示键
+    expect(result).toEqual({
+      added: true,
+      ignored_args: ['totally_unknown_key'],
+    });
+  });
+
+  it('上游正式别名(recording.label / window.webview_label|window|window_label)不误报(M-4,V2 中-1)', async () => {
+    const { client, state } = mockClient(async () => ({ ok: true }));
+    const recordingTool = createRestBridgeTool(specOf('recording'), {
+      getClient: async () => client,
+    });
+    const recordingResult = (await recordingTool.execute(
+      { action: 'list_checkpoints', label: 'cp' },
+      {} as never,
+    )) as Record<string, unknown>;
+    expect(state.calls).toBe(1);
+    // checkpoint_label 的 serde alias label 真实消费,不得报 ignored
+    expect('ignored_args' in recordingResult).toBe(false);
+
+    const windowTool = createRestBridgeTool(specOf('window'), {
+      getClient: async () => client,
+    });
+    const windowResult = (await windowTool.execute(
+      { action: 'list', webview_label: 'a', window: 'b', window_label: 'c' },
+      {} as never,
+    )) as Record<string, unknown>;
+    expect(state.calls).toBe(2);
+    // WindowParams.label 的三个 serde alias 全部真实消费
+    expect('ignored_args' in windowResult).toBe(false);
   });
 });

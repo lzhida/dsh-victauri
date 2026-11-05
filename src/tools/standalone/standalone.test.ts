@@ -6,7 +6,12 @@ import { CLI_ACTIONS, isCliAction } from '../../cli.ts';
 import type { VictauriClient } from '../../client.ts';
 import { VictauriError, VictauriHttpError } from '../../errors.ts';
 import { REST_TOOL_SPECS, STANDALONE_TOOL_COUNT } from './catalog.ts';
-import { createRestBridgeTool } from './bridge.ts';
+import {
+  createRestBridgeTool,
+  UPSTREAM_EXTRA_ALIASES,
+  UPSTREAM_WINDOW_ALIAS_TOOLS,
+} from './bridge.ts';
+import { COMPOUND_TOOL_SPECS } from '../compound/catalog.ts';
 import { IMAGE_DIR_NAME } from './image.ts';
 import { RENDER_MAX_CHARS, renderJson } from './render.ts';
 
@@ -405,5 +410,172 @@ describe('dsh-victauri standalone 批', () => {
     const plainError = plainResult['error'] as AnyRecord;
     expect(plainError['kind']).toBe('tool-error');
     expect('status' in plainError).toBe(false);
+  });
+});
+
+describe('批十三 2/2:M-4 ignored_args 可观测性', () => {
+  it('未知键照常透传(上游行为不变)且结果顶层附加 ignored_args(排序确定)', async () => {
+    const { client, calls } = mockClient(async () => ({ value: 1 }));
+    const tool = createRestBridgeTool(specOf('eval_js'), {
+      getClient: async () => client,
+    });
+    const result = (await tool.execute(
+      { code: '1', foo: 'bar', alpha: 2 },
+      {} as never,
+    )) as AnyRecord;
+    // 透传不变:未知键仍发送给服务端(上游静默忽略语义不改变)
+    expect(calls[0]?.args).toEqual({ code: '1', foo: 'bar', alpha: 2 });
+    // 可观测性:顶层附加键,按字母排序保证确定性
+    expect(result['ignored_args']).toEqual(['alpha', 'foo']);
+    expect(result['value']).toBe(1);
+  });
+
+  it('无未知键时不携带 ignored_args 键(零行为变化)', async () => {
+    const { client } = mockClient(async () => ({ ok: true }));
+    const tool = createRestBridgeTool(specOf('app_info'), {
+      getClient: async () => client,
+    });
+    const result = (await tool.execute({}, {} as never)) as AnyRecord;
+    expect(result).toEqual({ ok: true });
+    expect('ignored_args' in result).toBe(false);
+  });
+
+  it('schema 声明键不误报(expression/sql 经本地归一后已不在请求中)', async () => {
+    const { client } = mockClient(async () => ({ value: 2 }));
+    const evalTool = createRestBridgeTool(specOf('eval_js'), {
+      getClient: async () => client,
+    });
+    const evalResult = (await evalTool.execute(
+      { expression: '1+1' },
+      {} as never,
+    )) as AnyRecord;
+    expect('ignored_args' in evalResult).toBe(false);
+
+    const queryTool = createRestBridgeTool(specOf('query_db'), {
+      getClient: async () => client,
+    });
+    const queryResult = (await queryTool.execute(
+      { sql: 'SELECT 1' },
+      {} as never,
+    )) as AnyRecord;
+    expect('ignored_args' in queryResult).toBe(false);
+  });
+
+  it('上游正式别名(window/window_label)不误报(V2 中-1:上游 serde alias 真实消费)', async () => {
+    const { client, calls } = mockClient(async () => ({ value: 3 }));
+    const tool = createRestBridgeTool(specOf('eval_js'), {
+      getClient: async () => client,
+    });
+    const result = (await tool.execute(
+      { code: '1', window: 'main', window_label: 'main' },
+      {} as never,
+    )) as AnyRecord;
+    // 两个别名键照常透传(上游 EvalJsParams.webview_label 的 serde alias)
+    expect(calls[0]?.args).toEqual({
+      code: '1',
+      window: 'main',
+      window_label: 'main',
+    });
+    expect('ignored_args' in result).toBe(false);
+  });
+
+  it('非别名集合成员如实上报(app_state 的 window 键上游无字段,应报 ignored)', async () => {
+    const { client } = mockClient(async () => ({ result: { pid: 1 } }));
+    const tool = createRestBridgeTool(specOf('app_state'), {
+      getClient: async () => client,
+    });
+    // app_state 上游 AppStateParams 只有 probe(无 webview_label/window),
+    // 传 window 不生效 → 诚实回报
+    const result = (await tool.execute(
+      { probe: 'x', window: 'main' },
+      {} as never,
+    )) as AnyRecord;
+    expect(result['ignored_args']).toEqual(['window']);
+  });
+
+  it('图像通道不附加 ignored_args(落盘结果只带路径,V2 低-3)', async () => {
+    // 1x1 红点 PNG(与上方落盘用例同一常量来源)
+    const PNG_BASE64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const { client } = mockClient(async () => ({
+      type: 'image',
+      data: PNG_BASE64,
+      mimeType: 'image/png',
+    }));
+    const tool = createRestBridgeTool(specOf('screenshot'), {
+      getClient: async () => client,
+    });
+    const result = (await tool.execute(
+      { window_label: 'main', stray_unknown_key: 1 },
+      {} as never,
+    )) as AnyRecord;
+    expect(typeof result['path']).toBe('string');
+    expect('ignored_args' in result).toBe(false);
+    rmSync(result['path'] as string, { force: true });
+  });
+
+  it('上游结果自带 ignored_args 键时不被覆盖(插件提示改用 ignored_args_plugin,V2 低-5)', async () => {
+    const { client } = mockClient(async () => ({
+      value: 1,
+      ignored_args: ['from_upstream'],
+    }));
+    const tool = createRestBridgeTool(specOf('eval_js'), {
+      getClient: async () => client,
+    });
+    const result = (await tool.execute(
+      { code: '1', foo: 'bar' },
+      {} as never,
+    )) as AnyRecord;
+    // 上游值原样保留,插件提示走备用键
+    expect(result['ignored_args']).toEqual(['from_upstream']);
+    expect(result['ignored_args_plugin']).toEqual(['foo']);
+  });
+
+  it('错误信封不附加 ignored_args(错误面保持精简)', async () => {
+    const { client } = mockClient(async () => {
+      throw new Error('boom');
+    });
+    const tool = createRestBridgeTool(specOf('app_info'), {
+      getClient: async () => client,
+    });
+    const result = (await tool.execute({ stray: 1 }, {} as never)) as AnyRecord;
+    const err = result['error'] as AnyRecord;
+    expect(err).toBeDefined();
+    expect('ignored_args' in result).toBe(false);
+  });
+
+  it('别名登记表与两份 catalog 漂移守卫(成员是真实 spec;webview 组成员必声明 webview_label;app_state/fault 留在组外;extra 键与声明键不重叠)', () => {
+    const specs = [...REST_TOOL_SPECS, ...COMPOUND_TOOL_SPECS];
+    const allNames = new Set(specs.map((spec) => spec.name));
+    for (const name of UPSTREAM_WINDOW_ALIAS_TOOLS) {
+      expect(allNames.has(name), `别名组含未知工具名:${name}`).toBe(true);
+    }
+    for (const name of Object.keys(UPSTREAM_EXTRA_ALIASES)) {
+      expect(allNames.has(name), `额外别名表含未知工具名:${name}`).toBe(true);
+    }
+    const specByName = new Map(specs.map((spec) => [spec.name, spec]));
+    for (const name of UPSTREAM_WINDOW_ALIAS_TOOLS) {
+      const spec = specByName.get(name)!;
+      expect(
+        Object.keys(spec.parameters),
+        `${name} 应声明 webview_label(上游 window/window_label alias 挂在该字段上)`,
+      ).toContain('webview_label');
+    }
+    // 上游结构体没有 webview_label 字段的两个特例(0.10.3 AppStateParams/FaultParams)
+    // 必须留在组外——传 window 进去上游同样静默忽略,要如实上报
+    expect(UPSTREAM_WINDOW_ALIAS_TOOLS.has('app_state')).toBe(false);
+    expect(UPSTREAM_WINDOW_ALIAS_TOOLS.has('fault')).toBe(false);
+    // 额外表的键不得与 schema 声明键重复(重复登记无意义)
+    for (const [name, extras] of Object.entries(UPSTREAM_EXTRA_ALIASES)) {
+      const declared = new Set(Object.keys(specByName.get(name)!.parameters));
+      for (const extra of extras) {
+        expect(
+          declared.has(extra),
+          `${name}.${extra} 已在 schema 声明,额外登记冗余`,
+        ).toBe(false);
+      }
+    }
+    // 组规模锚点:23 个(standalone 10 + compound 13),防止静默增删
+    expect(UPSTREAM_WINDOW_ALIAS_TOOLS.size).toBe(23);
   });
 });

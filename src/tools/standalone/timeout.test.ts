@@ -112,9 +112,16 @@ describe('resolveRequestBudgetMs 解析矩阵', () => {
 });
 
 describe('目录声明锁定(DoD: 显式预算 + 未声明保持默认)', () => {
-  it('trace 与 introspect 声明 90s 预算', () => {
+  it('trace 与 introspect 声明 90s 预算;eval_js 声明 45s 预算(M-5)', () => {
     expect(specOf('trace').requestBudgetMs).toBe(90_000);
     expect(specOf('introspect').requestBudgetMs).toBe(90_000);
+    // M-5(批十三 2/2):上游 eval_js 无 per-call 超时参数(0.10.3 webview_params.rs:7-13),
+    // 超时是 app 级配置(默认 30s,可配至 300s);45s 预算给默认档留余量,
+    // 不追 300s 上限(TOOL_BUDGET_MAX_MS=120s 也夹不住 300s 的追平意图)。
+    expect(specOf('eval_js').requestBudgetMs).toBe(45_000);
+    // M-5 解析矩阵:eval_js 走 spec 声明档(无动态参数参与)
+    expect(resolveRequestBudgetMs('eval_js', {}, 45_000)).toBe(45_000);
+    expect(resolveRequestBudgetMs('eval_js', { code: '1' })).toBeUndefined();
   });
 
   it('wait_for 不做静态声明(纯动态);全部声明值 ≤ 上限', () => {
@@ -129,12 +136,12 @@ describe('目录声明锁定(DoD: 显式预算 + 未声明保持默认)', () => 
         ).toBeLessThanOrEqual(TOOL_BUDGET_MAX_MS);
       }
     }
-    // 声明者口径:仅 trace/introspect(漂移即本断言失败,提醒更新文档)
+    // 声明者口径:仅 eval_js(M-5)/trace/introspect(漂移即本断言失败,提醒更新文档)
     const declarers = all
       .filter((spec) => spec.requestBudgetMs !== undefined)
       .map((spec) => spec.name)
       .sort();
-    expect(declarers).toEqual(['introspect', 'trace']);
+    expect(declarers).toEqual(['eval_js', 'introspect', 'trace']);
   });
 });
 
@@ -166,6 +173,16 @@ describe('桥集成:预算作为 callTool 第三参透传', () => {
     await appInfo.execute({}, {} as never);
     expect(calls[1]?.name).toBe('app_info');
     expect(calls[1]?.budget).toBeUndefined();
+  });
+
+  it('eval_js 用 spec 声明预算 45s(第三参集成,M-5/V2 低-9)', async () => {
+    const { client, calls } = mockClient();
+    const evalTool = createRestBridgeTool(specOf('eval_js'), {
+      getClient: async () => client,
+    });
+    await evalTool.execute({ code: '1' }, {} as never);
+    expect(calls[0]?.name).toBe('eval_js');
+    expect(calls[0]?.budget).toBe(45_000);
   });
 });
 
