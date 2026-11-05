@@ -780,7 +780,22 @@ describe('dsh-victauri 工具面契约', () => {
     expect(rowOf('批十一 2/3')).toMatch(/执行中（本卡）|已执行 [0-9a-f]{7}/);
     const row11c = rowOf('批十一 3/3');
     expect(row11c).toContain('t-mw31b5gs-0czoj5');
-    expect(row11c).not.toContain('已执行');
+    // 批十一 3/3 与批十二 1/1 已于 round-8 执行完毕，状态列须回填提交号
+    expect(row11c).toContain('已执行 e98546f');
+    const row12 = rowOf('批十二 1/1');
+    expect(row12).toContain('t-mw351p2r-b6rxos');
+    expect(row12).toContain('已执行 855f6c2');
+    // round-8 新登记的四行必须同时带卡号与提交号（只写 hash 会丢追溯入口）
+    for (const key of [
+      '批十一 1/3',
+      '批十一 2/3',
+      '批十一 3/3',
+      '批十二 1/1',
+    ]) {
+      const row = rowOf(key);
+      expect(row).toMatch(/t-mw[0-9a-z-]+/);
+      expect(row).toMatch(/已执行 [0-9a-f]{7}/);
+    }
 
     // ⑤ 映射表不得把已由更早提交结案的差距记到后来的批次名下
     // （P3-5 实由 be544f6/eb549f3 落地，不是批十一 1/3 的成果）
