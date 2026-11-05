@@ -488,20 +488,34 @@ schema 节点为 `type:'json'`（无类型约束，见 `src/tools/standalone/jso
 插件里有三处会返回带 `kind` 的结构化错误。它们的 `kind` **各自是一套封闭词汇表，
 语义域不同、名字不可互相等价理解**——看到名字相近就当成同一含义会误判。
 
-| 词汇表            | 位置                                                | 取值                                                                                                               | 语义域                                                                                              | 消费者                                                               |
-| ----------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| REST 桥接错误信封 | `src/errors.ts` 的 `VictauriErrorKind`              | `no-instance` / `instance-incomplete` / `no-live-instance` / `http-error` / `timeout` / `tool-error` / `cli-error` | **调用失败的原因**：找不到实例 / 实例残缺 / 实例不活 / HTTP 非 2xx / 超时 / 工具被拒 / CLI 拉起失败 | standalone 与 compound 全部工具的 `{error:{kind,message,hint}}` 信封 |
-| CLI 探测域        | `src/tools/cli-status.ts` 的 `CliStatusError.kind`  | `not_found` / `cli-error` / `timeout`                                                                              | **本机 `victauri` CLI 是否可用**：没找到可执行文件 / 拉起失败 / 探测超时                            | `victauri_cli_status` 工具的 `error` 字段                            |
-| 工具发现域        | `src/tools/tools-list.ts` 的 `ToolsListWarningKind` | `not_exposed` / `missing_on_server`                                                                                | **暴露面与服务端清单的差异**：服务端有而插件没暴露 / 插件暴露而服务端没有                           | `victauri_tools_list` 工具的 `warnings` 数组                         |
+| 词汇表            | 位置                                                | 取值                                                                                                                                                                          | 语义域                                                                                                                                                                 | 消费者                                                                       |
+| ----------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| REST 桥接错误信封 | `src/errors.ts` 的 `VictauriErrorKind`              | `no-instance` / `instance-incomplete` / `no-live-instance` / `invalid-params` / `auth` / `not-found` / `rate-limited` / `http-error` / `timeout` / `tool-error` / `cli-error` | **调用失败的原因**：找不到实例 / 实例残缺 / 实例不活 / HTTP 400 / HTTP 401、403 / HTTP 404 / HTTP 429 / 其余 HTTP 非 2xx 与网络层失败 / 超时 / 工具被拒 / CLI 拉起失败 | standalone 与 compound 全部工具的 `{error:{kind,message,hint,status?}}` 信封 |
+| CLI 探测域        | `src/tools/cli-status.ts` 的 `CliStatusError.kind`  | `not_found` / `cli-error` / `timeout`                                                                                                                                         | **本机 `victauri` CLI 是否可用**：没找到可执行文件 / 拉起失败 / 探测超时                                                                                               | `victauri_cli_status` 工具的 `error` 字段                                    |
+| 工具发现域        | `src/tools/tools-list.ts` 的 `ToolsListWarningKind` | `not_exposed` / `missing_on_server`                                                                                                                                           | **暴露面与服务端清单的差异**：服务端有而插件没暴露 / 插件暴露而服务端没有                                                                                              | `victauri_tools_list` 工具的 `warnings` 数组                                 |
 
 兜底值与自由字符串（不属上面任何封闭表）：
 
 - REST 桥接信封里还会出现 `unknown`——非 `VictauriError` 的异常在
   `src/tools/standalone/bridge.ts` 的 `toErrorValue` 里被归一为 `unknown`。
   它是**兜底值**，不对应任何一种已定义的失败原因。
-- `victauri_tools_list` 工具的 `error` 字段形状是 `{kind,message,hint}`，但其中
+- `victauri_tools_list` 工具的 `error` 字段形状是 `{kind,message,hint,status?}`，但其中
   `kind` 是**自由字符串**（类型上写作 `string`），并非受限词汇表——它沿用
   REST 桥接信封的取值，也可能取兜底值 `unknown`。
+
+HTTP 分流与信封可选键（backlog-A，M-1/S-1/S-2）：
+
+- **HTTP 状态码 → kind 的机械映射**：`VictauriHttpError` 构造时推导——400→`invalid-params`、
+  401/403→`auth`、404→`not-found`、429→`rate-limited`，其余（5xx/405 等）与网络层
+  fetch 失败保持 `http-error`。
+- **可选 `status` 键**：HTTP 分流错误的信封额外携带 `status`（数字）；非 HTTP 错误
+  （`timeout`/`tool-error`/`no-instance` 等）不带该键。
+- **工具级失败归一（S-1）**：上游工具级失败信封是 HTTP 200 + 顶层 `{"error": <值>}`，
+  现在归一为结构化 `tool-error` 抛出（消息带上游摘要，截 500 字符），不再当作工具
+  数据透出给模型——这是**行为变更**（修复目的本身）。
+- **自动重发现（S-2）**：连接成功后收到 `auth`(401/403) 或网络层 `http-error` 时，
+  插件自动重置共享连接，下次调用重新 discovery（读到新 token/port）；其余错误不复位
+  （400/404/429/5xx/超时/工具级失败意味着服务在线，复位只会放大故障）。
 
 易混对照（**仅作提醒，不是等价关系**）：
 

@@ -84,6 +84,8 @@ describe('dsh-victauri client', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(VictauriHttpError);
       expect((err as VictauriHttpError).status).toBe(401);
+      // M-1(backlog-A):401 按 status 细分为 auth
+      expect((err as VictauriHttpError).kind).toBe('auth');
     }
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
@@ -123,6 +125,65 @@ describe('dsh-victauri client', () => {
     expect(unwrapped).toEqual({ bridge_version: '0.10.2', port: 7373 });
     const bare = await client.callTool('bare');
     expect(bare).toEqual({ direct: true });
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('backlog-A M-1:VictauriHttpError 按 status 机械细分 kind(400/401/403/404/429/5xx)', () => {
+    expect(new VictauriHttpError(400, 'bad', 'ctx').kind).toBe(
+      'invalid-params',
+    );
+    expect(new VictauriHttpError(401, 'unauth', 'ctx').kind).toBe('auth');
+    expect(new VictauriHttpError(403, 'forbidden', 'ctx').kind).toBe('auth');
+    expect(new VictauriHttpError(404, 'nope', 'ctx').kind).toBe('not-found');
+    expect(new VictauriHttpError(429, 'slow down', 'ctx').kind).toBe(
+      'rate-limited',
+    );
+    expect(new VictauriHttpError(500, 'boom', 'ctx').kind).toBe('http-error');
+    expect(new VictauriHttpError(503, 'unavailable', 'ctx').kind).toBe(
+      'http-error',
+    );
+    expect(new VictauriHttpError(405, 'method', 'ctx').kind).toBe('http-error');
+  });
+
+  it('backlog-A S-1:HTTP 200 顶层 {"error"} 归一为 tool-error 结构化错误,不再当数据透出', async () => {
+    const { server, url } = await startServer({
+      'POST /api/tools/eval_js': {
+        needAuth: true,
+        body: '{"error":"eval timed out after 30s"}',
+      },
+      'POST /api/tools/objerr': {
+        needAuth: true,
+        body: '{"error":{"code":42}}',
+      },
+      'POST /api/tools/multi': {
+        needAuth: true,
+        body: '{"result":[{"type":"text","text":"x"}]}',
+      },
+    });
+    const client = new VictauriClient({ baseUrl: url, token: GOOD_TOKEN });
+    // string error → 摘要原样进 message
+    try {
+      await client.callTool('eval_js');
+      expect.unreachable('should throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(VictauriError);
+      expect((err as VictauriError).kind).toBe('tool-error');
+      expect((err as Error).message).toContain(
+        'callTool(eval_js): upstream tool-level failure: eval timed out after 30s',
+      );
+    }
+    // 非 string error → JSON 摘要
+    try {
+      await client.callTool('objerr');
+      expect.unreachable('should throw');
+    } catch (err) {
+      expect((err as VictauriError).kind).toBe('tool-error');
+      expect((err as Error).message).toContain('{"code":42}');
+    }
+    // 正常 {result} 信封与多内容块不受影响
+    expect(await client.callTool('multi')).toEqual([
+      { type: 'text', text: 'x' },
+    ]);
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 

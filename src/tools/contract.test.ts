@@ -968,4 +968,67 @@ describe('dsh-victauri 工具面契约', () => {
     // 例外段不得反过来把 trace/fault 塞回影响面清单
     expect(exceptionText).not.toContain('影响面是');
   });
+
+  it('backlog-A 错误词汇表与重发现护栏:kind 11 值 / HTTP 分流 / S-1 归一 / S-2 矩阵与实现同源', () => {
+    const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+    const readDoc = (relative: string) =>
+      readFileSync(join(repoRoot, relative), 'utf8');
+
+    // ① docs 词汇表 REST 行必须与 errors.ts 的 11 值封闭表同源(逐值反引号锚点)
+    const KINDS = [
+      'no-instance',
+      'instance-incomplete',
+      'no-live-instance',
+      'invalid-params',
+      'auth',
+      'not-found',
+      'rate-limited',
+      'http-error',
+      'timeout',
+      'tool-error',
+      'cli-error',
+    ];
+    const toolsDoc = readDoc('docs/TOOLS.md');
+    const restRow = toolsDoc
+      .split('\n')
+      .find((line) => line.includes('VictauriErrorKind'));
+    expect(restRow, 'docs/TOOLS.md 缺少 REST 桥接词汇表行').toBeDefined();
+    for (const kind of KINDS) {
+      expect(restRow, `docs 词汇表缺 kind:${kind}`).toContain(`\`${kind}\``);
+    }
+    expect(restRow).toContain('{error:{kind,message,hint,status?}}');
+
+    // ② errors.ts 源码同源:11 个字面量 + kindForStatus 四条映射
+    const errorsSrc = readDoc('src/errors.ts');
+    for (const kind of KINDS) {
+      expect(errorsSrc, `errors.ts 缺 kind:${kind}`).toContain(`'${kind}'`);
+    }
+    expect(errorsSrc).toContain('function kindForStatus');
+    expect(errorsSrc).toContain("if (status === 400) return 'invalid-params';");
+    expect(errorsSrc).toContain(
+      "if (status === 401 || status === 403) return 'auth';",
+    );
+    expect(errorsSrc).toContain("if (status === 404) return 'not-found';");
+    expect(errorsSrc).toContain("if (status === 429) return 'rate-limited';");
+
+    // ③ docs 的分流/S-1/S-2 说明必须齐备(含行为变更声明)
+    expect(toolsDoc).toContain('HTTP 状态码 → kind 的机械映射');
+    expect(toolsDoc).toContain('可选 `status` 键');
+    expect(toolsDoc).toContain('工具级失败归一（S-1）');
+    expect(toolsDoc).toContain('行为变更');
+    expect(toolsDoc).toContain('自动重发现（S-2）');
+
+    // ④ 实现侧同源:S-2 矩阵只认 401/403 与网络层 http-error;包装层接线存在
+    const indexSrc = readDoc('src/index.ts');
+    expect(indexSrc).toContain('export function shouldResetClient');
+    expect(indexSrc).toContain('class ReconnectingVictauriClient');
+    expect(indexSrc).toContain('err.status === 401 || err.status === 403');
+    expect(indexSrc).toContain("err.kind === 'http-error'");
+
+    // ⑤ bridge.ts:信封透出可选 status;deny_unknown_fields 不实注释已订正
+    const bridgeSrc = readDoc('src/tools/standalone/bridge.ts');
+    expect(bridgeSrc).toContain('VictauriHttpError ? err.status : undefined');
+    expect(bridgeSrc).not.toContain('服务端拒未知字段');
+    expect(bridgeSrc).toContain('静默忽略');
+  });
 });

@@ -11,13 +11,17 @@
  *   覆盖 screenshot / trace frames / animation scrub filmstrip）在 renderJson
  *   截断之前统一落盘 %TEMP%\dsh-victauri\ 返回路径，落盘失败回退原文并保留错误；
  * - 数组结果包装为 {items: [...]}（dsh execute 契约要求顶层 object，find_elements 实测顶层数组）；
- * - 错误面：VictauriError 系列不 throw，返回结构化 {error:{kind,message,hint}} +
- *   自检指引（启动 app / victauri check）。
+ * - 错误面：VictauriError 系列不 throw，返回结构化 {error:{kind,message,hint,status?}} +
+ *   自检指引（启动 app / victauri check）；status 仅 HTTP 分流错误携带（M-1）。
  */
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools';
 
-import type { VictauriClient } from '../../client.ts';
-import { VictauriError, isVictauriError } from '../../errors.ts';
+import type { VictauriClientLike } from '../../client.ts';
+import {
+  isVictauriError,
+  VictauriError,
+  VictauriHttpError,
+} from '../../errors.ts';
 import type { JsonValue } from '../../json.ts';
 import { normalizeImageResult, saveImage } from './image.ts';
 import type { RestToolSpec } from './catalog.ts';
@@ -27,7 +31,7 @@ import { renderJson } from './render.ts';
 
 /** 工具运行期依赖：惰性取连接（装配层缓存复用；连接异步建立）。 */
 export interface BridgeDeps {
-  getClient: () => Promise<VictauriClient>;
+  getClient: () => Promise<VictauriClientLike>;
 }
 
 /** 无 app 运行/调用失败时的自检指引。 */
@@ -40,7 +44,16 @@ export const SELF_CHECK_HINT =
 function toErrorValue(err: unknown): Record<string, JsonValue> {
   const kind = isVictauriError(err) ? err.kind : 'unknown';
   const message = err instanceof Error ? err.message : String(err);
-  return { error: { kind, message, hint: SELF_CHECK_HINT } };
+  // M-1(backlog-A):HTTP 分流错误透出可选 status(非 HTTP 错误不带该键,向后兼容)
+  const status = err instanceof VictauriHttpError ? err.status : undefined;
+  return {
+    error: {
+      kind,
+      message,
+      hint: SELF_CHECK_HINT,
+      ...(status !== undefined ? { status } : {}),
+    },
+  };
 }
 
 /** 需要别名归一的工具（实测名 ← 文档别名）。 */
@@ -109,7 +122,9 @@ export function createRestBridgeTool(
         const callArgs: Record<string, JsonValue> = toJsonArgs(
           args as unknown as Record<string, unknown>,
         );
-        // 别名归一:实测名优先,文档别名兜底;别名键总是移除(服务端拒未知字段)
+        // 别名归一:实测名优先,文档别名兜底;别名键移除仅为本插件防混淆——
+        // 上游对未知键是静默忽略(0.8.8/0.10.2/0.10.3 全仓均无 deny_unknown_fields,
+        // backlog-A 订正),不移除也能被服务端忽略,但会让「实际生效的键」难以观察
         if (alias) {
           const [primary, aliasKey] = alias;
           const aliasVal = callArgs[aliasKey];

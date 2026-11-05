@@ -14,10 +14,21 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools';
 
-import { connectAuto, VictauriClient } from './client.ts';
+import type { JsonValue } from './json.ts';
+import {
+  connectAuto,
+  VictauriClient,
+  type VictauriClientLike,
+  type VictauriToolInfo,
+} from './client.ts';
 import { resolveConfig, type ResolvedVictauriConfig } from './config.ts';
 import { scanInstances } from './discovery.ts';
-import { VictauriError } from './errors.ts';
+import {
+  isVictauriError,
+  VictauriError,
+  VictauriHttpError,
+  VictauriTimeoutError,
+} from './errors.ts';
 import {
   SKILL_CONTENT,
   SKILL_DESCRIPTION,
@@ -79,6 +90,69 @@ async function makeClient(
 }
 
 /**
+ * S-2 重发现触发矩阵（backlog-A 设计提案 §3，用户已批准）：按错误形态判定
+ * 是否复位共享连接。
+ * - `VictauriHttpError` 401/403（auth）→ 复位：token 失配意味着实例重启过或
+ *   换了 token 文件，下次调用重新 discovery 自然读到新值；
+ * - `VictauriError('http-error')`（fetch 网络层失败：连接拒绝/DNS 等）→ 复位：
+ *   实例可能已退出或换端口；
+ * - `VictauriTimeoutError` → 不复位：eval 长任务超时常见，服务仍在线；
+ * - 其余（invalid-params/not-found/rate-limited/5xx/tool-error/timeout/
+ *   非结构化异常）→ 不复位，避免放大故障或形成复位循环。
+ */
+export function shouldResetClient(err: unknown): boolean {
+  if (err instanceof VictauriHttpError) {
+    return err.status === 401 || err.status === 403;
+  }
+  if (err instanceof VictauriTimeoutError) return false;
+  return isVictauriError(err) && err.kind === 'http-error';
+}
+
+/**
+ * S-2 重发现包装层：包住 VictauriClient，复位类错误（shouldResetClient 判真）
+ * 时回调 onReset（apply 里清空共享 clientPromise）并原样重抛——下次工具调用
+ * 重新 discovery。与 VictauriClient 同形（VictauriClientLike），桥接工具零改动。
+ * 导出仅供单测（reconnect.test.ts）注入桩。
+ */
+export class ReconnectingVictauriClient implements VictauriClientLike {
+  constructor(
+    private readonly inner: VictauriClient,
+    private readonly onReset: (err: unknown) => void,
+  ) {}
+
+  private async withReset<T>(op: () => Promise<T>): Promise<T> {
+    try {
+      return await op();
+    } catch (err) {
+      if (shouldResetClient(err)) this.onReset(err);
+      throw err;
+    }
+  }
+
+  callTool(
+    toolName: string,
+    args?: Record<string, JsonValue>,
+    timeoutMsOverride?: number,
+  ): Promise<JsonValue> {
+    return this.withReset(() =>
+      this.inner.callTool(toolName, args, timeoutMsOverride),
+    );
+  }
+
+  info(): Promise<Record<string, JsonValue>> {
+    return this.withReset(() => this.inner.info());
+  }
+
+  listTools(): Promise<VictauriToolInfo[]> {
+    return this.withReset(() => this.inner.listTools());
+  }
+
+  health(): Promise<boolean> {
+    return this.withReset(() => this.inner.health());
+  }
+}
+
+/**
  * 插件入口。
  *
  * @param ctx - cordis 上下文（tools 已由 inject 保证就绪）。
@@ -98,13 +172,22 @@ export function apply(ctx: Context, configInput?: unknown): void {
   }
 
   // 2. 惰性共享客户端：首次工具调用才 discovery + 探活；失败重置以便下次重试
-  //    （Tauri app 可能是后启动的）。
-  let clientPromise: Promise<VictauriClient> | undefined;
-  const getClient = (): Promise<VictauriClient> => {
-    clientPromise ??= makeClient(config).catch((err: unknown) => {
-      clientPromise = undefined;
-      throw err;
-    });
+  //    （Tauri app 可能是后启动的）。S-2：连接成功后的 401/403/网络层失败同样
+  //    复位（ReconnectingVictauriClient 回调清空 clientPromise），下次调用重新
+  //    discovery 读到新 token/port。
+  let clientPromise: Promise<VictauriClientLike> | undefined;
+  const getClient = (): Promise<VictauriClientLike> => {
+    clientPromise ??= makeClient(config)
+      .then(
+        (client) =>
+          new ReconnectingVictauriClient(client, () => {
+            clientPromise = undefined;
+          }),
+      )
+      .catch((err: unknown) => {
+        clientPromise = undefined;
+        throw err;
+      });
     return clientPromise;
   };
 

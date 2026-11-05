@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CLI_ACTIONS, isCliAction } from '../../cli.ts';
 import type { VictauriClient } from '../../client.ts';
-import { VictauriError } from '../../errors.ts';
+import { VictauriError, VictauriHttpError } from '../../errors.ts';
 import { REST_TOOL_SPECS, STANDALONE_TOOL_COUNT } from './catalog.ts';
 import { createRestBridgeTool } from './bridge.ts';
 import { IMAGE_DIR_NAME } from './image.ts';
@@ -382,5 +382,28 @@ describe('dsh-victauri standalone 批', () => {
       text_exact: true,
       include_hidden: true,
     });
+  });
+
+  it('backlog-A M-1:HTTP 分流错误信封带可选 status,非 HTTP 错误不带该键', async () => {
+    const httpTool = createRestBridgeTool(specOf('app_info'), {
+      getClient: async () => {
+        throw new VictauriHttpError(401, 'unauthorized', 'info');
+      },
+    });
+    const httpResult = (await httpTool.execute({}, {} as never)) as AnyRecord;
+    const httpError = httpResult['error'] as AnyRecord;
+    expect(httpError['kind']).toBe('auth');
+    expect(httpError['status']).toBe(401);
+    expect(String(httpError['message'])).toContain('HTTP 401');
+
+    const plainTool = createRestBridgeTool(specOf('app_info'), {
+      getClient: async () => {
+        throw new VictauriError('tool-error', 'upstream');
+      },
+    });
+    const plainResult = (await plainTool.execute({}, {} as never)) as AnyRecord;
+    const plainError = plainResult['error'] as AnyRecord;
+    expect(plainError['kind']).toBe('tool-error');
+    expect('status' in plainError).toBe(false);
   });
 });

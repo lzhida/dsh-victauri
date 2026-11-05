@@ -15,9 +15,10 @@ import { scanInstances, sortCandidates } from './discovery.ts';
  * - `/info`:带认证的实例信息(连接探活用它——能同时验证端口与 token 配对)
  * - `GET /api/tools`:工具列表(条目 {name, description},无 inputSchema)
  * - `POST /api/tools/{tool_name}`:执行工具;成功响应为 {result: <工具返回>},
- *   callTool 解包后返回工具返回本身
+ *   callTool 解包后返回工具返回本身;工具级失败为 HTTP 200 + 顶层 {"error"},
+ *   callTool 归一为结构化 tool-error(S-1)
  */
-export class VictauriClient {
+export class VictauriClient implements VictauriClientLike {
   private readonly baseUrl: string;
   private readonly token: string;
   private readonly timeoutMs: number;
@@ -92,8 +93,9 @@ export class VictauriClient {
    * 执行工具并解包 {result} 包裹。
    * @param timeoutMsOverride - 本次请求的超时覆盖毫秒（per-tool 预算，
    *   由工具层经 resolveRequestBudgetMs 解析后传入）；缺省沿用构造超时。
-   * @throws VictauriHttpError HTTP 非 2xx
-   * @throws VictauriError('tool-error') 响应不是 {result: ...} 形状
+   * @throws VictauriHttpError HTTP 非 2xx(kind 按 status 细分,见 errors.ts)
+   * @throws VictauriError('tool-error') 响应不是 {result: ...} 形状,
+   *   或 HTTP 200 + 顶层 {"error": ...} 的工具级失败信封(S-1)
    */
   async callTool(
     toolName: string,
@@ -122,6 +124,26 @@ export class VictauriClient {
     if (typeof parsed === 'object' && parsed !== null && 'result' in parsed) {
       const wrapped = parsed as { result: unknown };
       return normalizeJson(wrapped.result);
+    }
+    // S-1(backlog-A):上游工具级失败信封是 HTTP 200 + 顶层 {"error": <值>}
+    // (rest.rs to_rest_json 口径),没有 result 键——归一为结构化 tool-error,
+    // 不再当数据透出给模型。error 非 string 时用 JSON 摘要(截 500 字符)。
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      'error' in parsed &&
+      !('result' in parsed)
+    ) {
+      const errValue = (parsed as { error: unknown }).error;
+      const summary =
+        typeof errValue === 'string'
+          ? errValue
+          : (JSON.stringify(errValue) ?? String(errValue)).slice(0, 500);
+      throw new VictauriError(
+        'tool-error',
+        `callTool(${toolName}): upstream tool-level failure: ${summary}`,
+      );
     }
     // 兼容:某些版本/端点可能直接返回工具结果(无 result 包裹)
     return normalizeJson(parsed);
@@ -193,6 +215,22 @@ export class VictauriClient {
 
 /** 默认工具执行超时:victauri 侧 eval_timeout_secs=30,取同量级。 */
 export const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
+ * 连接客户端的最小公开面:getClient 消费方（standalone/compound 桥、工具发现）
+ * 依赖此形状而非具体类——S-2 重发现包装层（src/index.ts 的
+ * ReconnectingVictauriClient）与本体同形、可互换注入。
+ */
+export interface VictauriClientLike {
+  callTool(
+    toolName: string,
+    args?: Record<string, JsonValue>,
+    timeoutMsOverride?: number,
+  ): Promise<JsonValue>;
+  info(): Promise<Record<string, JsonValue>>;
+  listTools(): Promise<VictauriToolInfo[]>;
+  health(): Promise<boolean>;
+}
 
 /** 客户端构造选项。 */
 export interface VictauriClientOptions {

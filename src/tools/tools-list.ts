@@ -24,7 +24,7 @@
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types';
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools';
 
-import type { VictauriClient } from '../client.ts';
+import type { VictauriClientLike } from '../client.ts';
 import { isVictauriError } from '../errors.ts';
 import type { JsonValue } from '../json.ts';
 import { COMPOUND_TOOL_SPECS } from './compound/catalog.ts';
@@ -84,7 +84,7 @@ export interface ToolsListResult {
 
 /** 运行期依赖：惰性取连接（与桥接工具同一 client 实例）。 */
 export interface ToolsListDeps {
-  getClient: () => Promise<VictauriClient>;
+  getClient: () => Promise<VictauriClientLike>;
 }
 
 /**

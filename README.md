@@ -68,13 +68,13 @@ Victauri 全量 **35 个工具** + 1 个 CLI 桥工具 + 1 个 CLI 探测工具 
 
 ## 故障排查
 
-| 现象                        | 处置                                                                                                                                                                                   |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 工具返回 `no-live-instance` | Tauri app 未启动或未接入 victauri-plugin：以 **debug 构建**启动 app（release 构建的 victauri 桥是 no-op）并确认 `Builder.plugin(victauri_plugin::init())` 已接入                       |
-| 工具返回 `no-instance`      | discovery 目录无记录：确认 app 以 victauri-plugin 启动过；多实例/多 app 时配置 `appIdentifier` 或 `portOverride` 收敛目标                                                              |
-| `401` / `http-error`        | token 失效（app 重启后 discovery 更新）：重启 dsh 插件或重试（连接失败会重置缓存，下次调用自动重新探活）                                                                               |
-| `cli-error`（CLI 桥）       | `victauri` CLI 不在 PATH：先跑 `victauri_cli_status` 看探测结论；再配置 `cliPath` 指向可执行文件或按提示 `scoop install victauri` / `mise install victauri` / `cargo install victauri` |
-| 注册的工具偏多              | 配置 `disabledTools` 列出不需要的工具全名                                                                                                                                              |
+| 现象                            | 处置                                                                                                                                                                                                                                                            |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 工具返回 `no-live-instance`     | Tauri app 未启动或未接入 victauri-plugin：以 **debug 构建**启动 app（release 构建的 victauri 桥是 no-op）并确认 `Builder.plugin(victauri_plugin::init())` 已接入                                                                                                |
+| 工具返回 `no-instance`          | discovery 目录无记录：确认 app 以 victauri-plugin 启动过；多实例/多 app 时配置 `appIdentifier` 或 `portOverride` 收敛目标                                                                                                                                       |
+| `auth`（401/403）/ `http-error` | token 失效（app 重启后 discovery 更新）或实例退出：auth(401/403)、网络层失败与连接失败会**自动重置缓存**并在下次调用重新发现（读到新 token/port）；`invalid-params`(400)/`not-found`(404)/`rate-limited`(429)/5xx/超时/工具级失败不复位（服务在线，复位无意义） |
+| `cli-error`（CLI 桥）           | `victauri` CLI 不在 PATH：先跑 `victauri_cli_status` 看探测结论；再配置 `cliPath` 指向可执行文件或按提示 `scoop install victauri` / `mise install victauri` / `cargo install victauri`                                                                          |
+| 注册的工具偏多                  | 配置 `disabledTools` 列出不需要的工具全名                                                                                                                                                                                                                       |
 
 ## 开发
 
