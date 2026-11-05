@@ -163,10 +163,15 @@ Rust `AnimationParams` 在 0.8.8 / 0.10.2 均无该字段）。
 | 顶层对象              | 原样透出（不包装） |
 | 标量（字符串/数字等） | `{"value": ...}`   |
 
-- **影响面是全部数组型结果**，不只 `victauri_find_elements`——实测
-  `get_registry` / `logs` / `recording` / `trace` / `route` / `window` / `fault` /
-  `animation` 等返回数组的子动作一律拿到 `{"items": [...]}`（本列表非穷举，
-  判定依据是结果顶层类型而非工具名）。
+- **影响面是全部数组型结果**，不只 `victauri_find_elements`——实测下列工具/子动作
+  返回顶层数组时一律拿到 `{"items": [...]}`：`find_elements` / `get_registry` /
+  `resolve_command` / `logs` / `recording` / `route` / `window` / `navigate` /
+  `inspect` / `animation` / `storage`（本列表非穷举，判定依据是结果顶层类型而非工具名）。
+- **两条易混例外**：上表清单里的工具**不要**把 `trace` 与 `fault` 算进来——
+  `trace` 的 `frames` 走插件图像通道（`src/tools/standalone/image.ts` 的
+  `normalizeImageResult`），返回 `{...merged, paths[], mime_type, count}` 而不是
+  `{"items": [...]}`；`fault` 的 `list` 上游返回对象 `{count, faults: [...]}`。
+  两者都不会拿到 `{"items": [...]}`。
 - **与上游的差异**：上游 victauri 的 `logs` 的 `console` / `network` / `ipc` /
   `navigation` / `dialogs` / `events` 返回的是**裸数组**（bare array，见上游
   0.10.3 文档 `tools-reference.md` 的 logs 章节「返回最新 100 条…as a bare

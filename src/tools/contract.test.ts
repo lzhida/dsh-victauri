@@ -801,6 +801,22 @@ describe('dsh-victauri 工具面契约', () => {
     );
   });
 
+  // 数组型工具清单（批十一 3/3 定稿：0.10.3 活体实测 + 上游源码取证，证据见 risk 文档）
+  // 「工具描述护栏」与「文档影响面护栏」共用同一份清单，避免文档与描述两处漂移
+  const ARRAY_TOOLS = [
+    'find_elements',
+    'get_registry',
+    'resolve_command',
+    'logs',
+    'recording',
+    'route',
+    'window',
+    'navigate',
+    'inspect',
+    'animation',
+    'storage',
+  ];
+
   it('批十一 3/3 数组型工具描述：只给确实返回顶层数组的工具补 {items:[...]} 说明，措辞统一', () => {
     // 统一措辞的硬编码期望：措辞改动必须同步改本断言，避免"改了文案却不断言"
     const EXPECTED_NOTE =
@@ -809,20 +825,6 @@ describe('dsh-victauri 工具面契约', () => {
       '裸数组直透提案见看板卡 t-mw1ri0ep-8vw7ql（未授权执行，需用户批准后才能认领）。';
     expect(ARRAY_RESULT_NOTE).toBe(EXPECTED_NOTE);
 
-    // 确实返回顶层数组的工具（0.10.3 活体实测 + 上游源码取证，证据见 risk 文档）
-    const ARRAY_TOOLS = [
-      'find_elements',
-      'get_registry',
-      'resolve_command',
-      'logs',
-      'recording',
-      'route',
-      'window',
-      'navigate',
-      'inspect',
-      'animation',
-      'storage',
-    ];
     // 每个工具都要写明「整体返回」还是「哪些子动作返回」顶层数组
     const SCOPE: Record<string, string> = {
       find_elements: '本工具返回顶层数组',
@@ -867,5 +869,88 @@ describe('dsh-victauri 工具面契约', () => {
     // ③ 旧措辞必须清退，避免同一语义存在两套说法
     expect(descOf('find_elements')).not.toContain('本插件包装为 {items:[...]}');
     expect(descOf('find_elements')).not.toContain('返回顶层数组,本插件包装为');
+  });
+
+  it('批十二 1/1 文档影响面护栏：docs/TOOLS.md 的数组影响面清单与工具描述口径同源', () => {
+    const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+    const toolsDoc = readFileSync(join(repoRoot, 'docs/TOOLS.md'), 'utf8');
+    const flat = (text: string) => text.replace(/\s+/g, ' ');
+
+    // 取「数组结果的形状」小节
+    const sectionStart = toolsDoc.indexOf('## 数组结果的形状');
+    expect(
+      sectionStart,
+      'docs/TOOLS.md 缺少「## 数组结果的形状」小节',
+    ).toBeGreaterThanOrEqual(0);
+    const sectionEnd = toolsDoc.indexOf('\n## ', sectionStart + 1);
+    const section = toolsDoc.slice(
+      sectionStart,
+      sectionEnd < 0 ? undefined : sectionEnd,
+    );
+
+    // 取「影响面」这一条（到下一个列表项为止），文档里的工具名一律用反引号标注
+    const lines = section.split('\n');
+    const impactStart = lines.findIndex((line) => line.includes('**影响面'));
+    expect(
+      impactStart,
+      'docs/TOOLS.md 缺少「影响面」说明',
+    ).toBeGreaterThanOrEqual(0);
+    const impact: string[] = [];
+    for (let i = impactStart; i < lines.length; i += 1) {
+      const line = lines[i]!;
+      if (i > impactStart && /^\s*-\s/.test(line)) break;
+      impact.push(line);
+    }
+    const impactText = flat(impact.join(' '));
+
+    // ① 影响面清单里的工具名集合必须与工具描述护栏的 ARRAY_TOOLS 完全一致
+    const knownNames = new Set([
+      ...REST_TOOL_SPECS.map((spec) => spec.name),
+      ...COMPOUND_TOOL_SPECS.map((spec) => spec.name),
+    ]);
+    const listed = [
+      ...new Set(
+        [...impactText.matchAll(/`([a-z_]+)`/g)]
+          .map((match) => match[1]!.replace(/^victauri_/, ''))
+          .filter((name) => knownNames.has(name)),
+      ),
+    ].sort();
+    expect(listed, '文档影响面清单与工具描述护栏的 ARRAY_TOOLS 不一致').toEqual(
+      [...ARRAY_TOOLS].sort(),
+    );
+
+    // ② 误列的两条必须不在影响面清单里（trace.frames 走图像通道、fault.list 返回对象）
+    expect(impactText).not.toContain('`trace`');
+    expect(impactText).not.toContain('`fault`');
+
+    // ③ 非穷举免责句必须保留
+    expect(impactText).toContain('本列表非穷举');
+    expect(impactText).toContain('判定依据是结果顶层类型');
+
+    // ④ 两条易混例外必须在小节里写明，避免读者以为 trace/fault 拿不到 {"items":...}
+    //    例外单独成条，单独取该条断言，避免靠整节里任意位置出现关键词蒙混过关
+    const exceptionStart = lines.findIndex((line) =>
+      line.includes('**两条易混例外**'),
+    );
+    expect(
+      exceptionStart,
+      'docs/TOOLS.md 缺少「两条易混例外」说明',
+    ).toBeGreaterThanOrEqual(0);
+    const exception: string[] = [];
+    for (let i = exceptionStart; i < lines.length; i += 1) {
+      const line = lines[i]!;
+      if (i > exceptionStart && /^\s*-\s/.test(line)) break;
+      exception.push(line);
+    }
+    const exceptionText = flat(exception.join(' '));
+    expect(exceptionText).toContain('`trace`');
+    expect(exceptionText).toContain('`fault`');
+    expect(exceptionText).toContain('normalizeImageResult');
+    expect(exceptionText).toContain('图像通道');
+    // 两个例外各自的真实返回形状都必须写明（不是只提工具名）
+    expect(exceptionText).toContain('{...merged, paths[], mime_type, count}');
+    expect(exceptionText).toContain('{count, faults: [...]}');
+    // 例外段不得反过来把 trace/fault 塞回影响面清单
+    expect(exceptionText).not.toContain('影响面是');
   });
 });
