@@ -189,11 +189,56 @@ describe('dsh-victauri victauri_cli_status', () => {
   it('locateExecutable:路径型命中/未命中，裸名按 PATH 搜索', () => {
     const cli = join(workDir, 'victauri.exe');
     writeFileSync(cli, 'fake-binary');
+    const originalPathExt = process.env['PATHEXT'];
+    // 显式固化 PATHEXT（V2 低-1）：不隐含依赖宿主环境必含 .EXE
+    if (process.platform === 'win32') {
+      process.env['PATHEXT'] = '.COM;.EXE;.BAT;.CMD';
+    }
+    try {
+      expect(locateExecutable(cli)).toBe(resolve(cli));
+      expect(locateExecutable(join(workDir, 'nope.exe'))).toBeNull();
+      // 裸名命中分平台：win32 无后缀裸名靠 PATHEXT 解析到 .exe；非 Windows
+      // 没有 PATHEXT 机制，按精确名命中，需补无后缀夹具（CI Linux 实测：
+      // 只放 .exe 夹具时裸名返回 null —— 见 run 42019682148）。
+      if (process.platform !== 'win32') {
+        writeFileSync(join(workDir, 'victauri'), 'fake-binary');
+      }
+      const expected =
+        process.platform === 'win32'
+          ? join(workDir, 'victauri.exe')
+          : join(workDir, 'victauri');
+      // 先 not.toBeNull 保证失败信息可读（V2 低-2），再比较具体命中路径。
+      // win32 的 PATHEXT 条目通常是大写（.EXE），返回值保留拼接时的字面量
+      // 大小写，而磁盘大小写不敏感 → 统一归一小写比较（Linux 字面量本就
+      // 相等，归一无害，保持跨平台断言同构 —— V2 低-3 认可的风格选择）。
+      const hit = locateExecutable('victauri');
+      expect(hit).not.toBeNull();
+      expect(hit?.toLowerCase()).toBe(expected.toLowerCase());
+    } finally {
+      if (originalPathExt === undefined) delete process.env['PATHEXT'];
+      else process.env['PATHEXT'] = originalPathExt;
+    }
+  });
 
-    expect(locateExecutable(cli)).toBe(resolve(cli));
-    expect(locateExecutable(join(workDir, 'nope.exe'))).toBeNull();
-    // 裸名：临时目录内已有 victauri.exe（win32 靠 PATHEXT 命中）
-    expect(locateExecutable('victauri')).not.toBeNull();
+  it('locateExecutable:非 Windows 平台按精确名命中（无 PATHEXT，不认裸名→.exe）', () => {
+    // 平台伪装：把 CI（ubuntu-latest）上真实发生的 Linux 语义在任意平台
+    // 复现为回归用例，Windows 本机也能验证这一失败形态。
+    const original = Object.getOwnPropertyDescriptor(process, 'platform');
+    expect(original).toBeDefined();
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    try {
+      // 修复前 CI 失败形态：PATH 目录只有 victauri.exe，裸名不命中
+      expect(locateExecutable('victauri')).toBeNull();
+      // 补无后缀夹具后按精确名命中（Linux 无 PATHEXT，不做扩展名补全）
+      writeFileSync(join(workDir, 'victauri'), 'fake-binary');
+      expect(locateExecutable('victauri')).toBe(join(workDir, 'victauri'));
+    } finally {
+      Object.defineProperty(
+        process,
+        'platform',
+        original as PropertyDescriptor,
+      );
+    }
   });
 
   it('parseCliVersion:提取语义化版本号，无版本则 null', () => {
